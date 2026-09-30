@@ -14,7 +14,7 @@ Last updated: 2026-09-30
 | M2 — Model loading + posing core (FK/IK) | **PASS** | 46/46 tests; typecheck + build clean. Browser-verified: humanoid renders (2 draw calls, 1256 tris), joint select attaches TransformControls gizmo, FK rotation deforms mesh (hand moved 0.395 m), IK solves end-effector chain |
 | M3 — Model library | **PASS** | 16 real FBX models downloaded and verified (16/16 resolve 22/22 core bones via alias, all skinned, correct heights). Browser-verified: mannequin renders at 28,880 tris and deforms under FK posing. 36 models total in picker |
 | M4 — Camera, lighting, environment | **PASS** | 71/71 tests; build clean. Browser-verified: FOV 15° vs 100° visibly changes perspective, light azimuth/elevation changes shading, cast shadow renders opposite the light, two-layer grid with adjustable cell/divisions |
-| M5 — Export (5 passes + OBJ) | TODO | — |
+| M5 — Export (5 passes + OBJ) | **PASS** | 106/106 tests; build clean. Browser-verified at 2048×2048: 5 passes produce 5 distinct payloads; OBJ export of the posed mannequin yields 86,640 verts / 28,880 faces in metres |
 | M6 — Poses | TODO | — |
 | M7 — Animations (CMU mocap) | TODO | — |
 | M8 — Props + image planes | TODO | — |
@@ -187,6 +187,56 @@ and bare forms, guarded by a lookahead so it cannot truncate names like
 2. **Loaded FBX cast no shadows.** `castShadow`/`receiveShadow` are not set on
    imported assets, so the figure cast nothing onto the ground plane. Now set
    on every mesh as models load, which applies to all formats.
+
+## M5 notes
+
+- `src/export/OpenPose.ts` defines COCO-18 once, with the rig bone supplying
+  each keypoint and the 17 limb connections. Face keypoints derive from the
+  head bone using offsets scaled by head size.
+- `src/export/RenderPasses.ts` provides the normal and depth override
+  materials plus a real Sobel `CannyPass` (three has no built-in edge pass, so
+  the scene renders to a luminance target and a 3×3 kernel runs as a
+  fullscreen quad).
+- `src/export/ObjExport.ts` bakes the pose by blending bone matrices per
+  vertex, matching GPU skinning, so the OBJ carries the pose rather than the
+  rest pose. Optional UVs and normals.
+- `src/export/Exporter.ts` drives all five passes from one camera and one pose
+  and restores renderer size, pixel ratio, clear alpha and background
+  afterwards, so an export never leaves the viewport in a wrong state.
+
+### OpenPose ordering is asserted literally
+
+The test writes out all 18 keypoint names in order rather than comparing
+against the same constant, because a reordering bug would otherwise pass every
+test while silently producing a conditioning image that is useless in
+ControlNet. Limb connections are checked against valid indices too.
+
+### Bugs found by inspecting the exported images, not the code
+
+Both were invisible to unit tests and only showed up when the actual PNGs were
+looked at:
+
+1. **OpenPose exported blank.** `drawOpenPose2D` called `getContext("2d")` on
+   the renderer's canvas, which already holds a WebGL context. A canvas can
+   only ever have one context type, so this returned `null` and nothing was
+   drawn — silently, because the function was written defensively. The stick
+   figure now paints on its own 2D canvas and is read back directly.
+2. **Canny was byte-identical to Regular.** `CannyPass` drew its edge image,
+   then `renderPass` re-rendered the scene on top of it. Only the passes that
+   actually need a scene render do so now. A regression test asserts the
+   drawing call count and that a transparent export paints no background.
+
+### M5 verification detail
+
+- All five passes exported at 2048×2048 from a posed mannequin (arm raised,
+  torso twisted, one leg forward); payload sizes all differ, so no two passes
+   are the same image.
+- Visual check: regular is lit, OpenPose is a cyan COCO-18 stick figure, depth
+  is a silhouette gradient, canny is edge lines only, normals is RGB
+  view-space normals.
+- OBJ export from the same live pose: 3.17 MB, 86,640 vertices, 28,880 faces,
+  1-based indices, coordinates in metres — confirming the M3 scale
+  normalization holds through export.
 
 ## Legal posture
 
