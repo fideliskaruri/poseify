@@ -11,7 +11,7 @@ Last updated: 2026-09-30
 |---|---|---|
 | M0 — Scaffold | **PASS** | `npm run dev` serves; WebGL canvas renders grid + orbit controls (confirmed in-browser); `npm run build` succeeds |
 | M1 — Rig contract + retargeter | **PASS** | 23/23 vitest tests green + typecheck clean. Mixamo-named skeleton validates clean; scrambled skeleton fails with non-empty `missing`; three-tier retarget (exact / alias / heuristic) covered including fail-loudly |
-| M2 — Model loading + posing core (FK/IK) | TODO | — |
+| M2 — Model loading + posing core (FK/IK) | **PASS** | 46/46 tests; typecheck + build clean. Browser-verified: humanoid renders (2 draw calls, 1256 tris), joint select attaches TransformControls gizmo, FK rotation deforms mesh (hand moved 0.395 m), IK solves end-effector chain |
 | M3 — Model library (all CC0) | TODO | — |
 | M4 — Camera, lighting, environment | TODO | — |
 | M5 — Export (5 passes + OBJ) | TODO | — |
@@ -56,6 +56,58 @@ Last updated: 2026-09-30
 - Test fixtures in `src/rig/__tests__/fixtures.ts` build a realistic
   ~1.7 m T-pose Mixamo-named `THREE.Bone` tree with `rename`/`omit`/`detach`/
   `lengths` options, so the retargeter is tested against loader-shaped input.
+
+## M2 notes
+
+- `src/models/ModelLoadConfig.ts`: per-model `boneSize` / `handBoneSize` /
+  `hipBoneSize` tuning mirroring PoseMy, plus `gizmoSizeFor` resolution.
+- `src/models/ModelLoader.ts`: GLTF/GLB/FBX/OBJ with runtime-configurable
+  Draco + KTX2 decoder paths. FBX and OBJ loaders are dynamic imports so they
+  cost nothing until a model of that format is requested.
+- `src/models/ProceduralHumanoid.ts`: rigged mannequin built from the contract's
+  own parent map, skinned by nearest bone. Six proportion presets (adult, child,
+  brute, muscular, skinny, stocky) cover the realistic-human morph range.
+- `src/models/ModelCatalog.ts`: 18 shipped models across human/stylized
+  families, each with its own gizmo tuning.
+- `src/posing/PosableSkeleton.ts`: FK posing with authored-rotation source of
+  truth, `applyPose` / `getPose` for transfer, and per-chain CCD IK solvers.
+- `src/posing/PoseController.ts`: click-to-select raycasting against joint
+  positions, rotate-only TransformControls gizmo, FK/IK mode switch.
+
+### Bugs found and fixed during M2
+
+1. **Wrist bones missing from the required set.** `LeftHand`/`RightHand` lived
+   only in the 42-bone hand group, so body-only validation never resolved them
+   and the IK end effectors were missing. Added `CORE_BONES` = 20 body bones +
+   both wrists, keeping `BODY_BONES` exactly as documented in FINDINGS.md.
+2. **`getPose` / `resetPose` iterated a Record as if it were a Map.**
+   `for...of this.rotations` and `this.rotations.keys()` both threw. Switched to
+   `Object.entries` / `Object.keys`.
+3. **One shared CCD solver dragged every limb.** `CCDIKSolver.update()` solves
+   every chain it holds, so dragging the left hand also re-solved the right arm
+   and both feet. Now one solver per chain, invoked only for the dragged
+   effector.
+4. **Skinned figure invisible in the browser.** `Skeleton.update()` threw
+   because `boneMatrices` is sized at construction and IK target bones were
+   appended afterwards. The exception aborted `projectObject` and dropped the
+   whole figure from the render (1 draw call, 0 triangles). `setupIK` now
+   reallocates `boneMatrices` and recomputes inverses after appending.
+5. **Skeleton built before world matrices were resolved**, so every
+   `boneInverse` was identity and skinning inflated the figure to 3.7 m. Now
+   bone world matrices are updated before `new THREE.Skeleton(...)`.
+6. **`OrbitControls.add()` does not exist** in three r169, so constructing
+   `PoseController` threw during mount and left a blank canvas. Orbit is now
+   disabled through the `dragging-changed` event instead.
+
+### M2 verification detail
+
+- FK: selecting `LeftArm` in the joint list attaches the rotate gizmo to the
+  bone; rotating 1.2 rad about Z moves `LeftHand` 0.395 m and the mesh
+  deforms with it.
+- IK: dragging `RightHand` toward (-0.35, 1.55, 0.35) lands it at
+  (-0.30, 1.50, 0.29) with the opposite arm untouched.
+- Pose transfer between differently-proportioned models is covered by unit
+  tests (adult <-> brute, adult <-> child) asserting quaternions match to 1e-6.
 
 ## Legal posture
 

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { BODY_BONES } from "../RigContract";
+import { BODY_BONES, CORE_BONES } from "../RigContract";
 import { retargetSkeleton } from "../Retargeter";
 import { buildSkeletonFixture } from "./fixtures";
 
@@ -11,7 +11,7 @@ describe("retargetSkeleton — tier 1 (exact names)", () => {
 
     expect(result.ok).toBe(true);
     expect(result.missing).toHaveLength(0);
-    expect(result.matches.size).toBe(BODY_BONES.length);
+    expect(result.matches.size).toBe(CORE_BONES.length);
     for (const match of result.matches.values()) {
       expect(match.strategy).toBe("exact");
     }
@@ -130,7 +130,7 @@ describe("retargetSkeleton — failure reporting", () => {
 
     const result = retargetSkeleton(group);
     expect(result.ok).toBe(false);
-    expect(result.missing).toHaveLength(BODY_BONES.length);
+    expect(result.missing).toHaveLength(CORE_BONES.length);
     expect(result.errors.join(" ")).toContain("No THREE.Bone");
     expect(() =>
       retargetSkeleton(group, { throwOnFailure: true }),

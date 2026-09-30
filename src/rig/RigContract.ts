@@ -29,6 +29,16 @@ export const BODY_BONES = [
 
 export type BodyBoneName = (typeof BODY_BONES)[number];
 
+/**
+ * Bones required for basic posing: the 20 body bones plus the two wrist bones.
+ *
+ * The wrist bones (LeftHand / RightHand) also appear in the 42-bone hand group,
+ * but they are needed for any real posing work and are the IK end effectors for
+ * the arm chains, so the retargeter always requires them. This keeps
+ * BODY_BONES itself exactly as documented in FINDINGS.md while closing the gap.
+ */
+export const CORE_BONES: readonly string[] = [...BODY_BONES, "LeftHand", "RightHand"];
+
 // Finger families, in Mixamo order.
 export const FINGER_NAMES = [
   "Index",
@@ -52,8 +62,11 @@ export const HAND_BONES: readonly string[] = HAND_SIDES.flatMap((side) => {
   return [hand, ...fingers];
 });
 
-// Full canonical rig: 20 body bones + 42 hand bones = 62.
-export const ALL_BONES: readonly string[] = [...BODY_BONES, ...HAND_BONES];
+// Full canonical rig: 20 body bones + 42 hand bones = 62 (wrists appear in
+// both groups, so the union is de-duplicated below).
+export const ALL_BONES: readonly string[] = [
+  ...new Set([...BODY_BONES, ...HAND_BONES]),
+];
 
 // Hip bone name (root of the skeleton).
 export const HIP_BONE = "Hips";
@@ -103,7 +116,7 @@ export function validateSkeleton(
   const requireHands = options.requireHands ?? false;
   const present = new Set(boneNames);
 
-  const required: readonly string[] = requireHands ? ALL_BONES : BODY_BONES;
+  const required: readonly string[] = requireHands ? ALL_BONES : CORE_BONES;
   const missing = required.filter((name) => !present.has(name));
   const requiredSet = new Set(required);
   const extra = boneNames.filter((name) => !requiredSet.has(name));
@@ -111,7 +124,8 @@ export function validateSkeleton(
   return { ok: missing.length === 0, missing, extra };
 }
 
-// Chains used by the IK solver and the OpenPose exporter.
+// IK chains, effector first (PoseMy/bundle order). The solver reverses these
+// into parent->child order. Single source of truth for the IK topology.
 export const IK_CHAINS: Readonly<Record<string, readonly string[]>> = {
   LeftHand: ["LeftHand", "LeftForeArm", "LeftArm", "LeftShoulder"],
   RightHand: ["RightHand", "RightForeArm", "RightArm", "RightShoulder"],

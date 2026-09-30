@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_BONES,
   BODY_BONES,
+  CORE_BONES,
   HAND_BONES,
   HIP_BONE,
   isHandBone,
@@ -27,6 +28,13 @@ describe("rig contract shape", () => {
   it("uses Hips as the hip bone", () => {
     expect(HIP_BONE).toBe("Hips");
     expect(BODY_BONES).toContain(HIP_BONE);
+  });
+
+  it("CORE_BONES is the 20 body bones plus both wrists", () => {
+    expect(CORE_BONES).toHaveLength(22);
+    expect(CORE_BONES).toContain("LeftHand");
+    expect(CORE_BONES).toContain("RightHand");
+    for (const b of BODY_BONES) expect(CORE_BONES).toContain(b);
   });
 
   it("every hand bone carries a Left or Right prefix", () => {
@@ -55,9 +63,8 @@ describe("validateSkeleton — M1 acceptance", () => {
     const result = validateSkeleton(names);
     expect(result.ok).toBe(true);
     expect(result.missing).toHaveLength(0);
-    // Body-only validation treats the two wrist bones as extra; that is
-    // expected because they belong to the 42-bone hand group.
-    expect(result.extra.sort()).toEqual(["LeftHand", "RightHand"]);
+    // The fixture carries exactly the core bones and no extras.
+    expect(result.extra).toHaveLength(0);
   });
 
   it("a scrambled skeleton fails with a non-empty missing list", () => {

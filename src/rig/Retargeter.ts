@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   ALL_BONES,
   BODY_BONES,
+  CORE_BONES,
   HIP_BONE,
   RIG_PARENTS,
   validateSkeleton,
@@ -291,7 +292,7 @@ export function retargetSkeleton(
 ): RetargetResult {
   const requireHands = options.requireHands ?? false;
   const leftIsPositiveX = options.leftIsPositiveX ?? true;
-  const required: readonly string[] = requireHands ? ALL_BONES : BODY_BONES;
+  const required: readonly string[] = requireHands ? ALL_BONES : CORE_BONES;
 
   const sources = collectBones(root);
   const consumed = new Set<THREE.Bone>();
