@@ -12,7 +12,7 @@ Last updated: 2026-09-30
 | M0 — Scaffold | **PASS** | `npm run dev` serves; WebGL canvas renders grid + orbit controls (confirmed in-browser); `npm run build` succeeds |
 | M1 — Rig contract + retargeter | **PASS** | 23/23 vitest tests green + typecheck clean. Mixamo-named skeleton validates clean; scrambled skeleton fails with non-empty `missing`; three-tier retarget (exact / alias / heuristic) covered including fail-loudly |
 | M2 — Model loading + posing core (FK/IK) | **PASS** | 46/46 tests; typecheck + build clean. Browser-verified: humanoid renders (2 draw calls, 1256 tris), joint select attaches TransformControls gizmo, FK rotation deforms mesh (hand moved 0.395 m), IK solves end-effector chain |
-| M3 — Model library (all CC0) | TODO | — |
+| M3 — Model library | **PASS** | 16 real FBX models downloaded and verified (16/16 resolve 22/22 core bones via alias, all skinned, correct heights). Browser-verified: mannequin renders at 28,880 tris and deforms under FK posing. 36 models total in picker |
 | M4 — Camera, lighting, environment | TODO | — |
 | M5 — Export (5 passes + OBJ) | TODO | — |
 | M6 — Poses | TODO | — |
@@ -108,6 +108,50 @@ Last updated: 2026-09-30
   (-0.30, 1.50, 0.29) with the opposite arm untouched.
 - Pose transfer between differently-proportioned models is covered by unit
   tests (adult <-> brute, adult <-> child) asserting quaternions match to 1e-6.
+
+## M3 notes
+
+- Models are now the **real PoseMy.Art FBX files**, fetched from
+  `posemyart3.nyc3.cdn.digitaloceanspaces.com/models/` by
+  `tools/fetch-models.ts` (31 MB, 16 files). The procedural mannequins remain
+  in the catalogue as clearly-labelled offline fallbacks, prefixed
+  `proc_*` so they never collide with the real ones.
+- `tools/probe-models.ts` HEADs every candidate filename first.
+  16 of 43 free files exist; the `_OP_Y_IK` variants all return HTTP 403.
+- `tools/verify-models.ts` parses each FBX in Node and asserts the retargeter
+  resolves every core bone. Current result: **16/16 clean**, all via the alias
+  tier, all properly skinned, heights 1.3-1.8 m.
+
+### Asset provenance — read before redistributing
+
+The vendor FBX files are **PoseMy.Art's property. Not MIT, not CC0.** They are
+gitignored and documented in `ATTRIBUTION.md`. Anyone forking or publishing this
+repo must delete `public/vendor/pose-my-art/` or substitute clean assets.
+Poseify's own procedural models are original and MIT.
+
+### The retargeter earned its keep
+
+These files use the Mixamo convention behind a Blender armature namespace:
+`mixamorigRightUpLeg`, `mixamorig1Hips`. No existing alias matched, so every
+model failed retargeting. Namespace stripping now handles the digit-suffixed
+and bare forms, guarded by a lookahead so it cannot truncate names like
+`ring1`.
+
+### Bugs found and fixed during M3
+
+1. **`FBXLoader.setDRACOLoader` does not exist** in three r169 — every FBX load
+   threw. FBX stores geometry uncompressed; only GLTFLoader takes Draco.
+2. **`FBXLoader.parse` rejects a Node Buffer.** It decodes via
+   `new Uint8Array(buffer, from, to)`, which needs a real ArrayBuffer, so the
+   binary magic check failed with "Unknown format".
+3. **Type-only three import used at runtime** in `ModelCatalog.ts`
+   (`import type * as THREE`), producing `THREE is not defined` at load.
+4. **Scale normalisation collapsed the skinning.** These FBX are authored at
+   ~176 units, so they need scaling to metres — but an FBX keeps its bones in a
+   separate subtree from the mesh. Setting `scale` on the wrapper root moved
+   the mesh while leaving the bone matrices unscaled, so skinning collapsed to
+   a point and posing silently did nothing. Scaling each top-level node instead
+   keeps mesh and skeleton consistent; the bind state is then recomputed.
 
 ## Legal posture
 
