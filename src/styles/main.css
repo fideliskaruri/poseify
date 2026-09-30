@@ -1,0 +1,39 @@
+:root {
+  --poseify-bg: #14161a;
+  --poseify-panel: #1c1f26;
+  --poseify-border: #2c313b;
+  --poseify-text: #e6e8ec;
+  --poseify-text-dim: #98a0ae;
+  --poseify-accent: #4c8dff;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--poseify-bg);
+  color: var(--poseify-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+
+.poseify-viewport {
+  position: fixed;
+  inset: 0;
+}
+
+.poseify-viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

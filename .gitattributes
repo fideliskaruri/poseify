@@ -1,0 +1,5 @@
+*.fbx binary
+*.glb binary
+*.gltf text
+*.obj text
+*.png binary
