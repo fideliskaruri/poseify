@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { usePosing } from "./composables/usePosing";
 import type { CatalogEntry } from "./models/ModelCatalog";
 
@@ -42,6 +42,16 @@ const {
   exportObjNow,
   download,
   clearExport,
+  poseSearch,
+  poseTagFilter,
+  appliedPoseId,
+  poseError,
+  poseThumbs,
+  allPoseTags,
+  visiblePoses,
+  togglePoseTag,
+  applyPose,
+  loadPoseThumbnails,
 } = usePosing();
 
 onMounted(() => {
@@ -69,6 +79,16 @@ const groups = computed(() => {
   }
   return [...map.entries()];
 });
+
+// Render thumbnails lazily: only the poses currently visible in the picker,
+// so opening it does not generate 98 renders up front.
+watch(
+  visiblePoses,
+  (poses) => {
+    void loadPoseThumbnails(poses.slice(0, 60));
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -324,6 +344,53 @@ const groups = computed(() => {
         <button type="button" class="chip wide" @click="resetPose">
           Reset pose
         </button>
+        <p v-if="poseError" class="hint warn">{{ poseError }}</p>
+
+        <label class="field">
+          <span>Search poses</span>
+          <input
+            v-model="poseSearch"
+            type="search"
+            placeholder="e.g. sword, wave, kneel"
+          />
+        </label>
+
+        <div class="tags">
+          <button
+            v-for="tag in allPoseTags"
+            :key="tag"
+            type="button"
+            class="tag"
+            :class="{ on: poseTagFilter.includes(tag) }"
+            @click="togglePoseTag(tag)"
+          >
+            {{ tag }}
+          </button>
+        </div>
+
+        <div class="pose-grid">
+          <button
+            v-for="pose in visiblePoses"
+            :key="pose.id"
+            type="button"
+            class="pose-tile"
+            :class="{ on: appliedPoseId === pose.id }"
+            :title="`${pose.name} — ${pose.tags.join(', ')}`"
+            @click="applyPose(pose)"
+          >
+            <img
+              v-if="poseThumbs[pose.id]"
+              :src="poseThumbs[pose.id]"
+              :alt="`${pose.name} pose`"
+            />
+            <span v-else class="thumb placeholder" aria-hidden="true"></span>
+            <span class="pose-name">{{ pose.name }}</span>
+          </button>
+        </div>
+        <p class="hint">
+          {{ visiblePoses.length }}
+          {{ visiblePoses.length === 1 ? "pose" : "poses" }} shown
+        </p>
       </section>
 
       <section v-if="activeModelId">
@@ -632,6 +699,91 @@ button.chip.tile.loading {
 .check input {
   accent-color: var(--poseify-accent);
   cursor: pointer;
+}
+
+.hint.warn {
+  color: #f0b4b4;
+}
+
+.field input[type="search"] {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 5px;
+  background: #1a1e26;
+  color: var(--poseify-text);
+  font-size: 11px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 6px 0;
+}
+
+button.tag {
+  padding: 2px 6px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--poseify-text-dim);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+button.tag.on {
+  border-color: var(--poseify-accent);
+  background: color-mix(in srgb, var(--poseify-accent) 28%, transparent);
+  color: var(--poseify-text);
+}
+
+.pose-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.pose-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 5px;
+  background: #232833;
+  color: var(--poseify-text);
+  cursor: pointer;
+  text-align: center;
+}
+
+.pose-tile:hover {
+  border-color: var(--poseify-accent);
+}
+
+.pose-tile.on {
+  border-color: var(--poseify-accent);
+  background: color-mix(in srgb, var(--poseify-accent) 24%, #232833);
+}
+
+.pose-tile img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 3px;
+  background: #0e1014;
+}
+
+.pose-name {
+  font-size: 9px;
+  line-height: 1.2;
+  color: var(--poseify-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .error {

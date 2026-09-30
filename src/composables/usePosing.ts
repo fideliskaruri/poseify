@@ -1,6 +1,6 @@
 // Bridges the framework-free 3D systems into Vue reactive state.
 
-import { onBeforeUnmount, ref, shallowRef } from "vue";
+import { computed, onBeforeUnmount, ref, shallowRef } from "vue";
 import * as THREE from "three";
 import { Viewport } from "../renderer/Viewport";
 import { PoseController, type InteractionMode } from "../posing/PoseController";
@@ -19,6 +19,14 @@ import {
   exportPasses,
   type ExportResult,
 } from "../export/Exporter";
+import { POSE_LIBRARY } from "../pose/PoseLibrary";
+import {
+  collectTags,
+  filterPoses,
+  validatePose,
+  type Pose,
+} from "../pose/Pose";
+import { poseThumbnailer } from "../pose/PoseThumbnail";
 
 export interface PosedModel {
   config: CatalogEntry;
@@ -336,6 +344,73 @@ export function usePosing() {
     exportError.value = null;
   }
 
+  // -------------------------------------------------------------- poses
+
+  const poseSearch = ref("");
+  const poseTagFilter = ref<string[]>([]);
+  const appliedPoseId = ref<string | null>(null);
+  const poseError = ref<string | null>(null);
+  const poseThumbs = ref<Record<string, string>>({});
+
+  const allPoseTags = collectTags(POSE_LIBRARY);
+
+  const visiblePoses = computed(() =>
+    filterPoses(POSE_LIBRARY, {
+      search: poseSearch.value,
+      tags: poseTagFilter.value,
+    }),
+  );
+
+  function togglePoseTag(tag: string): void {
+    const current = poseTagFilter.value;
+    poseTagFilter.value = current.includes(tag)
+      ? current.filter((t) => t !== tag)
+      : [...current, tag];
+  }
+
+  /**
+   * Apply a pose to the active model.
+   *
+   * Bones the model lacks are reported rather than silently dropped: a
+   * non-humanoid cannot take a humanoid pose, and the artist needs to know why
+   * nothing happened.
+   */
+  function applyPose(pose: Pose): boolean {
+    const active = models.value.find((m) => m.config.id === activeModelId.value);
+    if (!active) {
+      poseError.value = "Add and select a model first.";
+      return false;
+    }
+
+    const known = new Set(active.skeleton.getBoneNames());
+    const check = validatePose(pose, known);
+    if (!check.ok) {
+      const shown = check.unknownBones.slice(0, 3).join(", ");
+      const more = check.unknownBones.length > 3 ? ", ..." : "";
+      poseError.value =
+        `${active.config.name} cannot take "${pose.name}": ` +
+        `missing ${check.unknownBones.length} bone(s) (${shown}${more}).`;
+      return false;
+    }
+
+    active.skeleton.applyPose(pose.bones);
+    appliedPoseId.value = pose.id;
+    poseError.value = null;
+    return true;
+  }
+
+  /** Render thumbnails for the poses currently visible in the picker. */
+  async function loadPoseThumbnails(poses: readonly Pose[]): Promise<void> {
+    const thumbnailer = poseThumbnailer();
+    const next = { ...poseThumbs.value };
+    for (const pose of poses) {
+      if (next[pose.id]) continue;
+      const url = await thumbnailer.thumbnail(pose);
+      if (url) next[pose.id] = url;
+    }
+    poseThumbs.value = next;
+  }
+
   onBeforeUnmount(dispose);
 
   return {
@@ -379,5 +454,15 @@ export function usePosing() {
     exportObjNow,
     download,
     clearExport,
+    poseSearch,
+    poseTagFilter,
+    appliedPoseId,
+    poseError,
+    poseThumbs,
+    allPoseTags,
+    visiblePoses,
+    togglePoseTag,
+    applyPose,
+    loadPoseThumbnails,
   };
 }

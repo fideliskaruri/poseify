@@ -54,7 +54,16 @@ export class PosableSkeleton {
   constructor(
     root: THREE.Object3D,
     config: ModelLoadConfig,
-    options: { requireHands?: boolean; retarget?: RetargetResult } = {},
+    options: {
+      requireHands?: boolean;
+      retarget?: RetargetResult;
+      /**
+       * Skip IK chain setup. CCDIKSolver needs a SkinnedMesh, so a bone-only
+       * rig (pose thumbnails, FK-only previews) must opt out rather than
+       * throw.
+       */
+      enableIK?: boolean;
+    } = {},
   ) {
     this.root = root;
     this.config = config;
@@ -69,7 +78,7 @@ export class PosableSkeleton {
       this.restQuaternions.set(contractName, match.bone.quaternion.clone());
     }
 
-    this.setupIK();
+    if (options.enableIK !== false) this.setupIK();
   }
 
   /** True when the required contract bones resolved. */

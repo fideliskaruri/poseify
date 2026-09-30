@@ -28,6 +28,30 @@ describe("PosableSkeleton - construction", () => {
       /IK requires a SkinnedMesh/,
     );
   });
+
+  it("supports a bone-only rig when IK is explicitly disabled", () => {
+    // Pose thumbnails pose a bare skeleton with no SkinnedMesh, which CCD
+    // cannot use. FK must still work.
+    const { root } = buildFixture({ skinned: false });
+    const sk = new PosableSkeleton(root, testConfig("fk-only"), {
+      enableIK: false,
+    });
+    expect(sk.isValid).toBe(true);
+    expect(sk.ikIsEnabled).toBe(false);
+
+    const before = sk.getWorldPosition("LeftHand", new THREE.Vector3())!.clone();
+    sk.rotateBone("LeftArm", new THREE.Euler(0, 0, 1));
+    const after = sk.getWorldPosition("LeftHand", new THREE.Vector3())!;
+    expect(after.distanceTo(before)).toBeGreaterThan(0.05);
+  });
+
+  it("IK reports failure rather than throwing when disabled", () => {
+    const { root } = buildFixture({ skinned: false });
+    const sk = new PosableSkeleton(root, testConfig("fk-only"), {
+      enableIK: false,
+    });
+    expect(sk.solveIK("LeftHand", new THREE.Vector3(0.4, 1.5, 0.2))).toBe(false);
+  });
 });
 
 describe("PosableSkeleton - FK", () => {
