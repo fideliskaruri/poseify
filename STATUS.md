@@ -15,7 +15,7 @@ Last updated: 2026-09-30
 | M3 — Model library | **PASS** | 16 real FBX models downloaded and verified (16/16 resolve 22/22 core bones via alias, all skinned, correct heights). Browser-verified: mannequin renders at 28,880 tris and deforms under FK posing. 36 models total in picker |
 | M4 — Camera, lighting, environment | **PASS** | 71/71 tests; build clean. Browser-verified: FOV 15° vs 100° visibly changes perspective, light azimuth/elevation changes shading, cast shadow renders opposite the light, two-layer grid with adjustable cell/divisions |
 | M5 — Export (5 passes + OBJ) | **PASS** | 106/106 tests; build clean. Browser-verified at 2048×2048: 5 passes produce 5 distinct payloads; OBJ export of the posed mannequin yields 86,640 verts / 28,880 faces in metres |
-| M6 — Poses | TODO | — |
+| M6 — Poses | **PASS** | 137/137 tests; build clean. Browser-verified: 98 pose tiles with 60 rendered thumbnails, search "sword" -> exactly 3, "lying" tag -> exactly 5. Pose transfer measured at 5.16e-8 rad max error between two differently-proportioned models |
 | M7 — Animations (CMU mocap) | TODO | — |
 | M8 — Props + image planes | TODO | — |
 | M9 — Scenes, save/load, undo | TODO | — |
@@ -237,6 +237,50 @@ looked at:
 - OBJ export from the same live pose: 3.17 MB, 86,640 vertices, 28,880 faces,
   1-based indices, coordinates in metres — confirming the M3 scale
   normalization holds through export.
+
+## M6 notes
+
+- `src/pose/Pose.ts` defines the data model (`id`, `name`, `tags`, `bones`,
+  `source`), tag filtering, search, validation against a model's available
+  bones, and JSON round-tripping.
+- `src/pose/PoseAuthoring.ts` converts authored Euler angles in degrees into
+  quaternions, and provides mirroring and merging. Poses are authored in
+  degrees because 98 poses written as raw quaternions would be unreviewable;
+  degrees read like joint instructions.
+- `src/pose/PoseLibrary.ts` ships 98 poses across all ten required categories.
+  Five mirrored variants widen coverage and exercise the left/right swap that
+  pose transfer depends on.
+- `src/pose/PoseThumbnail.ts` renders thumbnails offscreen through the real
+  `PosableSkeleton`, so a thumbnail always matches what applying the pose
+  actually does. Generated lazily for visible tiles only, with in-flight
+  de-duplication.
+
+### Applying a pose to the wrong model reports why
+
+`applyPose` validates against the target model's bones and reports the missing
+ones instead of silently doing nothing, so applying a humanoid pose to a horse
+explains itself rather than appearing broken.
+
+### Bugs found and fixed during M6
+
+1. **Pose thumbnails threw on construction.** The thumbnail rig is bone-only,
+   but `PosableSkeleton` always set up CCD IK, which requires a SkinnedMesh.
+   `PosableSkeleton` now accepts `enableIK: false` for FK-only rigs, and
+   `solveIK` reports failure rather than throwing when disabled.
+2. **`mirrorPose` produced negative zero.** `JSON.stringify` writes `-0` as
+   `0`, so a serialise/parse round-trip failed deep equality on the five
+   mirrored poses. Zero is now normalised on write.
+
+### M6 verification detail
+
+- Picker renders 98 tiles; 60 thumbnails generated on demand, all distinct
+  and decoded.
+- Search "sword" narrows 98 -> 3 (Sword Ready, Sword Overhead, Sword Thrust).
+- Tag "lying" narrows to exactly 5 (Lie Supine, Lie Side, Lie Stomach, Lie
+  Cradled, Sprawl).
+- Pose transfer: `boxing_stance` applied to Mannequin Male, then to Muscular
+  Male. Maximum per-bone quaternion angle error across all 11 bones was
+  **5.16e-8 rad**, i.e. identical to float precision.
 
 ## Legal posture
 
