@@ -258,6 +258,12 @@ export async function loadModel(
     const bones = new Map<string, THREE.Bone>();
     root.traverse((o) => {
       if (o instanceof THREE.Bone) bones.set(o.name, o);
+      // Loaded assets do not carry shadow flags, and without them the figure
+      // casts nothing onto the ground plane.
+      if (o instanceof THREE.Mesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
     });
     return { root, bones };
   }

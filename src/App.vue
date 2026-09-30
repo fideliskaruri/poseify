@@ -24,6 +24,14 @@ const {
   loadThumbnails,
   loadingId,
   frameScene,
+  fov,
+  light,
+  grid,
+  lightGizmoVisible,
+  setFov,
+  setLight,
+  setGrid,
+  setLightGizmo,
 } = usePosing();
 
 onMounted(() => {
@@ -119,6 +127,111 @@ const groups = computed(() => {
     </aside>
 
     <aside class="panel panel-right">
+      <section>
+        <h2>Camera</h2>
+        <label class="field">
+          <span>FOV <b>{{ Math.round(fov) }}&deg;</b></span>
+          <input
+            type="range"
+            min="10"
+            max="110"
+            step="1"
+            :value="fov"
+            @input="setFov(Number(($event.target as HTMLInputElement).value))"
+          />
+        </label>
+        <button type="button" class="chip wide" @click="frameScene">
+          Frame scene
+        </button>
+      </section>
+
+      <section>
+        <h2>Light</h2>
+        <label class="field">
+          <span>Azimuth <b>{{ Math.round(light.azimuth) }}&deg;</b></span>
+          <input
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+            :value="light.azimuth"
+            @input="setLight({ azimuth: Number(($event.target as HTMLInputElement).value) })"
+          />
+        </label>
+        <label class="field">
+          <span>Elevation <b>{{ Math.round(light.elevation) }}&deg;</b></span>
+          <input
+            type="range"
+            min="1"
+            max="179"
+            step="1"
+            :value="light.elevation"
+            @input="setLight({ elevation: Number(($event.target as HTMLInputElement).value) })"
+          />
+        </label>
+        <label class="field">
+          <span>Intensity <b>{{ light.intensity.toFixed(1) }}</b></span>
+          <input
+            type="range"
+            min="0"
+            max="6"
+            step="0.1"
+            :value="light.intensity"
+            @input="setLight({ intensity: Number(($event.target as HTMLInputElement).value) })"
+          />
+        </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            :checked="light.castShadows"
+            @change="setLight({ castShadows: ($event.target as HTMLInputElement).checked })"
+          />
+          <span>Shadows</span>
+        </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            :checked="lightGizmoVisible"
+            @change="setLightGizmo(($event.target as HTMLInputElement).checked)"
+          />
+          <span>Show light gizmo</span>
+        </label>
+      </section>
+
+      <section>
+        <h2>Grid</h2>
+        <label class="check">
+          <input
+            type="checkbox"
+            :checked="grid.visible"
+            @change="setGrid({ visible: ($event.target as HTMLInputElement).checked })"
+          />
+          <span>Show grid</span>
+        </label>
+        <label class="field">
+          <span>Cell <b>{{ grid.cellSize.toFixed(2) }} m</b></span>
+          <input
+            type="range"
+            min="0.1"
+            max="5"
+            step="0.1"
+            :value="grid.cellSize"
+            @input="setGrid({ cellSize: Number(($event.target as HTMLInputElement).value) })"
+          />
+        </label>
+        <label class="field">
+          <span>Divisions <b>{{ grid.divisions }}</b></span>
+          <input
+            type="range"
+            min="4"
+            max="120"
+            step="1"
+            :value="grid.divisions"
+            @input="setGrid({ divisions: Number(($event.target as HTMLInputElement).value) })"
+          />
+        </label>
+      </section>
+
       <section>
         <h2>Mode</h2>
         <div class="segmented" role="group" aria-label="Interaction mode">
@@ -393,6 +506,47 @@ button.chip.tile.loading {
   margin: 6px 0 0;
   font-size: 11px;
   color: var(--poseify-text-dim);
+}
+
+.field {
+  display: block;
+  margin: 6px 0;
+}
+
+.field > span {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--poseify-text-dim);
+  margin-bottom: 3px;
+}
+
+.field b {
+  color: var(--poseify-text);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.field input[type="range"] {
+  width: 100%;
+  height: 16px;
+  accent-color: var(--poseify-accent);
+  cursor: pointer;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 0;
+  font-size: 11px;
+  color: var(--poseify-text-dim);
+  cursor: pointer;
+}
+
+.check input {
+  accent-color: var(--poseify-accent);
+  cursor: pointer;
 }
 
 .error {

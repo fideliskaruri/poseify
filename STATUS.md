@@ -13,7 +13,7 @@ Last updated: 2026-09-30
 | M1 — Rig contract + retargeter | **PASS** | 23/23 vitest tests green + typecheck clean. Mixamo-named skeleton validates clean; scrambled skeleton fails with non-empty `missing`; three-tier retarget (exact / alias / heuristic) covered including fail-loudly |
 | M2 — Model loading + posing core (FK/IK) | **PASS** | 46/46 tests; typecheck + build clean. Browser-verified: humanoid renders (2 draw calls, 1256 tris), joint select attaches TransformControls gizmo, FK rotation deforms mesh (hand moved 0.395 m), IK solves end-effector chain |
 | M3 — Model library | **PASS** | 16 real FBX models downloaded and verified (16/16 resolve 22/22 core bones via alias, all skinned, correct heights). Browser-verified: mannequin renders at 28,880 tris and deforms under FK posing. 36 models total in picker |
-| M4 — Camera, lighting, environment | TODO | — |
+| M4 — Camera, lighting, environment | **PASS** | 71/71 tests; build clean. Browser-verified: FOV 15° vs 100° visibly changes perspective, light azimuth/elevation changes shading, cast shadow renders opposite the light, two-layer grid with adjustable cell/divisions |
 | M5 — Export (5 passes + OBJ) | TODO | — |
 | M6 — Poses | TODO | — |
 | M7 — Animations (CMU mocap) | TODO | — |
@@ -152,6 +152,41 @@ and bare forms, guarded by a lookahead so it cannot truncate names like
    the mesh while leaving the bone matrices unscaled, so skinning collapsed to
    a point and posing silently did nothing. Scaling each top-level node instead
    keeps mesh and skeleton consistent; the bind state is then recomputed.
+
+## M4 notes
+
+- `src/scene/SceneEnvironment.ts` owns camera FOV, the directional key light,
+  a hemisphere fill, a two-layer ground grid, a shadow-only receiver plane, and
+  the light-direction gizmo. `Viewport` delegates to it instead of building
+  lights inline.
+- **FOV** is clamped to 5-120 degrees and drives the projection matrix
+  directly. Measured behaviour: a *narrow* FOV exaggerates the normalised
+  separation between points at different depths, a wide one compresses them.
+  (The first version of this test asserted the opposite; measuring it showed
+  the premise was inverted, and the test now encodes the measured physics.)
+- **Light direction** is spherical: azimuth 0 places the light on +Z rising
+  clockwise, elevation is measured up from the horizon and clamped to >= 1
+  degree so the direction vector stays defined. Distance is preserved at any
+  angle, verified by test.
+- **Light gizmo** sits at the light's own world position and is oriented with
+  `lookAt(0,0,0)`, with the arrow modelled along -Z so it reads as pointing at
+  the subject. A test asserts the gizmo position equals the light position and
+  that its forward vector points at the origin.
+- **Grid** is two `GridHelper` layers (fine at `cellSize`, coarse every 10
+  cells) so distance is readable without a texture. Cell size and divisions are
+  adjustable; the shadow receiver stays visible even when the grid is hidden so
+  figures never appear to float.
+- **Framing** (`frame`) fits a bounding box using the *current* FOV and aspect,
+  so widening the lens does not crop the subject.
+
+### Bug found and fixed during M4
+
+1. **Light elevation was inverted.** The spherical conversion used `cos(el)`
+   for Y, which put "90 degrees" (straight overhead) on the horizon. Corrected
+   to the standard convention: Y uses `sin`, horizontal components use `cos`.
+2. **Loaded FBX cast no shadows.** `castShadow`/`receiveShadow` are not set on
+   imported assets, so the figure cast nothing onto the ground plane. Now set
+   on every mesh as models load, which applies to all formats.
 
 ## Legal posture
 

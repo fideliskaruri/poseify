@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { SceneEnvironment } from "../scene/SceneEnvironment";
 
 // Owns the WebGL renderer, scene, camera and orbit controls.
 // Kept framework-free so later milestone systems attach without a Vue dependency.
@@ -8,7 +9,7 @@ export class Viewport {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly controls: OrbitControls;
-  readonly grid: THREE.GridHelper;
+  readonly environment: SceneEnvironment;
 
   private readonly container: HTMLElement;
   private readonly resizeObserver: ResizeObserver;
@@ -45,32 +46,11 @@ export class Viewport {
     this.controls.dampingFactor = 0.08;
     this.controls.update();
 
-    this.grid = new THREE.GridHelper(20, 20, 0x3a4250, 0x262b34);
-    this.grid.position.y = 0;
-    this.scene.add(this.grid);
-
-    this.addDefaultLights();
-
+    this.environment = new SceneEnvironment(this.camera);
+    this.environment.attach(this.scene);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
-  }
-
-  private addDefaultLights(): void {
-    const hemi = new THREE.HemisphereLight(0xbcd2ff, 0x2a2118, 0.6);
-    this.scene.add(hemi);
-
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
-    key.position.set(3, 6, 4);
-    key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.near = 0.5;
-    key.shadow.camera.far = 20;
-    key.shadow.camera.left = -4;
-    key.shadow.camera.right = 4;
-    key.shadow.camera.top = 4;
-    key.shadow.camera.bottom = -4;
-    this.scene.add(key);
   }
 
   private aspect(): number {
@@ -102,6 +82,7 @@ export class Viewport {
   dispose(): void {
     this.stop();
     this.resizeObserver.disconnect();
+    this.environment.dispose();
     this.controls.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

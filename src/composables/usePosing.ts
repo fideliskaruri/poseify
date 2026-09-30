@@ -12,6 +12,7 @@ import {
   type CatalogEntry,
 } from "../models/ModelCatalog";
 import { modelThumbnail, primeThumbnails } from "../models/ModelThumbnail";
+import type { GridState, LightState } from "../scene/SceneEnvironment";
 
 export interface PosedModel {
   config: CatalogEntry;
@@ -131,21 +132,44 @@ export function usePosing() {
       box.expandByObject(m.root, true);
     }
     if (box.isEmpty()) return;
+    vp.environment.frame(box, vp.controls);
+  }
 
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    const radius = Math.max(size.x, size.y, size.z) * 0.5;
-    const fov = (vp.camera.fov * Math.PI) / 180;
-    const dist = (radius / Math.sin(fov / 2)) * 1.15;
+  const fov = ref(50);
+  const light = ref<LightState>({
+    azimuth: 40,
+    elevation: 55,
+    intensity: 2.4,
+    distance: 9,
+    castShadows: true,
+  });
+  const grid = ref<GridState>({
+    visible: true,
+    cellSize: 1,
+    divisions: 40,
+    opacity: 0.55,
+  });
+  const lightGizmoVisible = ref(true);
 
-    vp.controls.target.copy(center);
-    vp.camera.position.set(
-      center.x + dist * 0.5,
-      center.y + size.y * 0.25,
-      center.z + dist,
-    );
-    vp.camera.updateProjectionMatrix();
-    vp.controls.update();
+  function setFov(degrees: number): void {
+    viewport.value?.environment.setFov(degrees);
+    fov.value = viewport.value?.environment.getFov() ?? degrees;
+  }
+
+  function setLight(partial: Partial<LightState>): void {
+    viewport.value?.environment.setLight(partial);
+    light.value = viewport.value?.environment.getLight() ?? light.value;
+  }
+
+  function setGrid(partial: Partial<GridState>): void {
+    viewport.value?.environment.setGrid(partial);
+    grid.value = viewport.value?.environment.getGrid() ?? grid.value;
+  }
+
+  function setLightGizmo(visible: boolean): void {
+    viewport.value?.environment.setLightGizmoVisible(visible);
+    lightGizmoVisible.value =
+      viewport.value?.environment.lightGizmoVisible ?? visible;
   }
 
   function init(): void {
@@ -197,6 +221,14 @@ export function usePosing() {
     boneNames,
     loadingId,
     hasRemoteModels,
+    fov,
+    light,
+    grid,
+    lightGizmoVisible,
+    setFov,
+    setLight,
+    setGrid,
+    setLightGizmo,
     catalog: MODEL_CATALOG,
     thumbnails,
     init,
