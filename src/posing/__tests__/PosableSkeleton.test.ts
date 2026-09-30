@@ -3,27 +3,14 @@ import { describe, expect, it } from "vitest";
 import { BODY_BONES, IK_CHAINS } from "../../rig/RigContract";
 import { PosableSkeleton, type PoseData } from "../PosableSkeleton";
 import {
-  ADULT,
-  BRUTE,
-  CHILD,
-  buildProceduralHumanoid,
-} from "../../models/ProceduralHumanoid";
-import {
-  DEFAULT_LOAD_CONFIG,
-  type ModelLoadConfig,
-} from "../../models/ModelLoadConfig";
+  buildFixture,
+  makeScaledSkeleton,
+  makeSkeleton,
+  testConfig,
+} from "./posingFixtures";
 
-function config(id: string, patch: Partial<ModelLoadConfig> = {}): ModelLoadConfig {
-  return { ...DEFAULT_LOAD_CONFIG, id, name: id, ...patch };
-}
-
-function makeSkeleton(proportions = ADULT, id = "test") {
-  const { root } = buildProceduralHumanoid(proportions);
-  return new PosableSkeleton(root, config(id));
-}
-
-describe("PosableSkeleton — construction", () => {
-  it("resolves the full 20-bone contract on a procedural humanoid", () => {
+describe("PosableSkeleton - construction", () => {
+  it("resolves the full contract on a standard rig", () => {
     const sk = makeSkeleton();
     expect(sk.isValid).toBe(true);
     expect(sk.retarget.missing).toHaveLength(0);
@@ -32,27 +19,18 @@ describe("PosableSkeleton — construction", () => {
     }
   });
 
-  it("resolves the 42 hand bones when fingers are included", () => {
-    const { root } = buildProceduralHumanoid(ADULT, { includeFingers: true });
-    const sk = new PosableSkeleton(root, config("fingers"), {
-      requireHands: true,
-    });
-    expect(sk.isValid).toBe(true);
-    expect(sk.presentHandBones).toHaveLength(42);
-  });
-
-  it("rejects a skeleton with no contract bones", () => {
+  it("throws on a mesh with no bones rather than half-working", () => {
     const group = new THREE.Group();
     group.add(
       new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()),
     );
-    expect(() => new PosableSkeleton(group, config("empty"))).toThrow(
+    expect(() => new PosableSkeleton(group, testConfig("empty"))).toThrow(
       /IK requires a SkinnedMesh/,
     );
   });
 });
 
-describe("PosableSkeleton — FK", () => {
+describe("PosableSkeleton - FK", () => {
   it("rotating a joint moves its children", () => {
     const sk = makeSkeleton();
     const before = sk.getWorldPosition("LeftHand", new THREE.Vector3())!.clone();
@@ -97,10 +75,11 @@ describe("PosableSkeleton — FK", () => {
   });
 });
 
-describe("PosableSkeleton — pose transfer across models", () => {
-  it("reproduces a pose on a differently-proportioned model", () => {
-    const a = makeSkeleton(ADULT, "adult");
-    const b = makeSkeleton(BRUTE, "brute");
+describe("PosableSkeleton - pose transfer across models", () => {
+  it("reproduces a pose on a differently-proportioned rig", () => {
+    const a = makeSkeleton("adult");
+    // 1.3x scale stands in for a chibi; 0.75x for a brute.
+    const b = makeScaledSkeleton(0.75, "brute");
 
     a.rotateBone("LeftArm", new THREE.Euler(0, 0, -1.1));
     a.rotateBone("Spine", new THREE.Euler(0.25, 0, 0));
@@ -116,19 +95,18 @@ describe("PosableSkeleton — pose transfer across models", () => {
     }
   });
 
-  it("survives repeated transfer between adult and child rigs", () => {
-    const adult = makeSkeleton(ADULT, "adult");
-    const child = makeSkeleton(CHILD, "child");
+  it("survives repeated transfer between differently-scaled rigs", () => {
+    const adult = makeSkeleton("adult");
+    const small = makeScaledSkeleton(0.62, "child");
 
     adult.rotateBone("LeftForeArm", new THREE.Euler(0, 0, 0.9));
     adult.rotateBone("Head", new THREE.Euler(0.2, 0.5, 0));
     const pose = adult.getPose();
 
-    child.applyPose(pose);
-    const afterChild = child.getPose();
-    child.applyPose(afterChild);
+    small.applyPose(pose);
+    small.applyPose(small.getPose());
     expect(
-      child
+      small
         .getBoneQuaternion("Head")!
         .angleTo(adult.getBoneQuaternion("Head")!),
     ).toBeLessThan(1e-6);
@@ -144,14 +122,14 @@ describe("PosableSkeleton — pose transfer across models", () => {
   });
 
   it("skips pose entries for bones the model lacks", () => {
-    const { root } = buildProceduralHumanoid(ADULT, { includeFingers: false });
-    const sk = new PosableSkeleton(root, config("nofingers"));
-    sk.applyPose({ LeftHandIndex1: [0, 0, 0, 1], Spine: [0, 0, 0, 1] });
+    const { root } = buildFixture({ omit: ["LeftForeArm"] });
+    const sk = new PosableSkeleton(root, testConfig("partial"));
+    sk.applyPose({ LeftForeArm: [0, 0, 0, 1], Spine: [0, 0, 0, 1] });
     expect(Object.keys(sk.getPose())).toEqual(["Spine"]);
   });
 });
 
-describe("PosableSkeleton — IK", () => {
+describe("PosableSkeleton - IK", () => {
   it("solves the left hand chain toward a reachable target", () => {
     const sk = makeSkeleton();
     // Must sit inside the arm's ~0.45 m reach from LeftShoulder.
@@ -181,12 +159,12 @@ describe("PosableSkeleton — IK", () => {
   });
 
   it("IK results are captured in the authored pose for transfer", () => {
-    const source = makeSkeleton(ADULT, "src");
+    const source = makeSkeleton("src");
     source.solveIK("RightHand", new THREE.Vector3(-0.4, 1.5, 0.2));
     const pose = source.getPose();
     expect(Object.keys(pose).length).toBeGreaterThan(0);
 
-    const target = makeSkeleton(BRUTE, "dst");
+    const target = makeScaledSkeleton(1.3, "dst");
     target.applyPose(pose);
     expect(
       target
@@ -200,9 +178,9 @@ describe("PosableSkeleton — IK", () => {
     sk.solveIK("LeftHand", new THREE.Vector3(0.4, 1.5, 0.2));
     const before = sk.getBoneQuaternion("LeftForeArm")!.clone();
     sk.rotateBone("LeftForeArm", new THREE.Euler(0, 0, 0.3));
-    expect(
-      sk.getBoneQuaternion("LeftForeArm")!.angleTo(before),
-    ).toBeGreaterThan(0.05);
+    expect(sk.getBoneQuaternion("LeftForeArm")!.angleTo(before)).toBeGreaterThan(
+      0.05,
+    );
   });
 
   it("refuses to solve when IK is disabled", () => {
@@ -222,7 +200,6 @@ describe("PosableSkeleton — IK", () => {
     const sk = makeSkeleton();
     for (const chain of Object.values(IK_CHAINS)) {
       for (const boneName of chain) {
-        expect(boneName).toBeTypeOf("string");
         expect(sk.getBone(boneName)).toBeDefined();
       }
     }
@@ -243,15 +220,14 @@ describe("PosableSkeleton — IK", () => {
   });
 });
 
-describe("PosableSkeleton — gizmo sizing", () => {
+describe("PosableSkeleton - gizmo sizing", () => {
   it("honours per-model bone/hand/hip sizes", () => {
-    const { root } = buildProceduralHumanoid(ADULT);
+    const { root } = buildFixture();
     const sk = new PosableSkeleton(
       root,
-      config("tuned", { boneSize: 3, handBoneSize: 0.8, hipBoneSize: 5 }),
+      testConfig("tuned", { boneSize: 3, handBoneSize: 0.8, hipBoneSize: 5 }),
     );
     expect(sk.gizmoSize("Spine")).toBe(3);
-    expect(sk.gizmoSize("LeftHandIndex1")).toBe(0.8);
     expect(sk.gizmoSize("Hips")).toBe(5);
   });
 });

@@ -17,16 +17,9 @@ export interface ModelLoadConfig {
   hipBoneSize: number;
   /** Whether OBJ export is permitted for this model. */
   exportable: boolean;
-  /** Thumb-relative path under /public. Absent for procedural models. */
+  /** Thumb-relative path under /public. Every shipped model has one. */
   path?: string;
-  /** Procedural builder id, for models generated at runtime. */
-  procedural?: ProceduralModelId;
 }
-
-export type ProceduralModelId =
-  | "stick_bot"
-  | "blocky_bot"
-  | "square_stick_bot";
 
 export const DEFAULT_LOAD_CONFIG: Omit<
   ModelLoadConfig,

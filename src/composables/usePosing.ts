@@ -11,7 +11,7 @@ import {
   isVendorModel,
   type CatalogEntry,
 } from "../models/ModelCatalog";
-import { modelThumbnail, primeThumbnails } from "../models/ModelThumbnail";
+import { modelThumbnail } from "../models/ModelThumbnail";
 import type { GridState, LightState } from "../scene/SceneEnvironment";
 
 export interface PosedModel {
@@ -108,12 +108,19 @@ export function usePosing() {
 
   const thumbnails = ref<Record<string, string>>({});
 
-  function loadThumbnails(): void {
-    primeThumbnails(MODEL_CATALOG);
+  async function loadThumbnails(): Promise<void> {
+    // Thumbnails are real FBX renders, so they resolve asynchronously. Build
+    // the map once every tile has settled; a model that cannot be rendered
+    // (no WebGL, missing file) simply gets no entry and shows its placeholder.
+    const entries = await Promise.all(
+      MODEL_CATALOG.map(async (config) => {
+        const url = await modelThumbnail(config);
+        return [config.id, url] as const;
+      }),
+    );
     const next: Record<string, string> = {};
-    for (const config of MODEL_CATALOG) {
-      const url = modelThumbnail(config);
-      if (url) next[config.id] = url;
+    for (const [id, url] of entries) {
+      if (url) next[id] = url;
     }
     thumbnails.value = next;
   }
