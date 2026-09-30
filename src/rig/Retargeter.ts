@@ -111,7 +111,18 @@ function normalise(name: string): string {
 }
 
 // Namespaces used by Mixamo / Blender FBX exports, stripped before fuzzy match.
-const NAMESPACE_PREFIX = /^(mixamorig|armature|root)[:_]/;
+//
+// Real observed forms from the PoseMy.Art model set:
+//   mixamorig1Hips        Blender glues the armature name on with no separator
+//   mixamorigRightUpLeg   same, with no numeric suffix
+//   mixamorig:Hips        colon-separated
+//   mixamorig_LeftArm     underscore-separated
+//
+// The separator-less form is only stripped when the remainder starts with an
+// uppercase letter, otherwise names like "righthip_thing" or "ring1" would be
+// truncated by a looser pattern.
+const NAMESPACE_PREFIX =
+  /^(?:mixamorig|armature|bip|rig)[:_]\d*[:_]?|^(?:mixamorig|armature|bip|rig)\d*(?=[A-Z])/i;
 
 function stripNamespace(name: string): string {
   return normalise(name.replace(NAMESPACE_PREFIX, ""));

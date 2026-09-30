@@ -1,15 +1,17 @@
 // Bridges the framework-free 3D systems into Vue reactive state.
 
 import { onBeforeUnmount, ref, shallowRef } from "vue";
-import type * as THREE from "three";
+import * as THREE from "three";
 import { Viewport } from "../renderer/Viewport";
 import { PoseController, type InteractionMode } from "../posing/PoseController";
 import { PosableSkeleton } from "../posing/PosableSkeleton";
 import {
   MODEL_CATALOG,
-  instantiateModel,
+  loadModel,
+  isVendorModel,
   type CatalogEntry,
 } from "../models/ModelCatalog";
+import { modelThumbnail, primeThumbnails } from "../models/ModelThumbnail";
 
 export interface PosedModel {
   config: CatalogEntry;
@@ -29,15 +31,30 @@ export function usePosing() {
   const status = ref("starting");
   const error = ref<string | null>(null);
   const boneNames = ref<string[]>([]);
+  const loadingId = ref<string | null>(null);
 
-  function attachModel(config: CatalogEntry): PosedModel {
+  async function attachModel(config: CatalogEntry): Promise<PosedModel> {
     const vp = viewport.value;
     if (!vp) throw new Error("Viewport not ready");
 
-    const { root } = instantiateModel(config);
+    loadingId.value = config.id;
+    let root: THREE.Object3D;
+    try {
+      const built = await loadModel(config, { renderer: vp.renderer });
+      root = built.root;
+    } finally {
+      loadingId.value = null;
+    }
+    // Fan new models out along X so several can be posed side by side instead
+    // of stacking inside one another.
+    root.position.x = models.value.length * 1.1;
     vp.scene.add(root);
+    vp.scene.updateMatrixWorld(true);
 
-    const skeleton = new PosableSkeleton(root, config, { requireHands: true });
+    // requireHands stays false so a model that ships without finger bones is
+    // still usable for body posing; finger-dependent UI simply has fewer
+    // joints to offer rather than the model being rejected outright.
+    const skeleton = new PosableSkeleton(root, config, { requireHands: false });
     if (!skeleton.isValid) {
       vp.scene.remove(root);
       throw new Error(
@@ -75,11 +92,60 @@ export function usePosing() {
     vp.scene.remove(posed.root);
     models.value = models.value.filter((m) => m.config.id !== id);
     if (activeModelId.value === id) setActive(null);
+    // Close the gap left by the removed model.
+    models.value.forEach((m, i) => {
+      m.root.position.x = i * 1.1;
+    });
   }
+
+  const hasRemoteModels = MODEL_CATALOG.some(isVendorModel);
 
   function resetPose(): void {
     const posed = models.value.find((m) => m.config.id === activeModelId.value);
     posed?.skeleton.resetPose();
+  }
+
+  const thumbnails = ref<Record<string, string>>({});
+
+  function loadThumbnails(): void {
+    primeThumbnails(MODEL_CATALOG);
+    const next: Record<string, string> = {};
+    for (const config of MODEL_CATALOG) {
+      const url = modelThumbnail(config);
+      if (url) next[config.id] = url;
+    }
+    thumbnails.value = next;
+  }
+
+  // Frame the camera on everything currently in the scene so newly added
+  // models are actually visible instead of sitting off-screen.
+  function frameScene(): void {
+    const vp = viewport.value;
+    if (!vp || models.value.length === 0) return;
+
+    const box = new THREE.Box3();
+    for (const m of models.value) {
+      // SkinnedMesh bounds come from the bind-pose geometry, so refresh the
+      // skeleton first or the frame will be computed against stale vertices.
+      m.root.updateMatrixWorld(true);
+      box.expandByObject(m.root, true);
+    }
+    if (box.isEmpty()) return;
+
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 0.5;
+    const fov = (vp.camera.fov * Math.PI) / 180;
+    const dist = (radius / Math.sin(fov / 2)) * 1.15;
+
+    vp.controls.target.copy(center);
+    vp.camera.position.set(
+      center.x + dist * 0.5,
+      center.y + size.y * 0.25,
+      center.z + dist,
+    );
+    vp.camera.updateProjectionMatrix();
+    vp.controls.update();
   }
 
   function init(): void {
@@ -129,7 +195,10 @@ export function usePosing() {
     activeModelId,
     selectedBone,
     boneNames,
+    loadingId,
+    hasRemoteModels,
     catalog: MODEL_CATALOG,
+    thumbnails,
     init,
     dispose,
     attachModel,
@@ -138,5 +207,7 @@ export function usePosing() {
     setMode,
     removeModel,
     resetPose,
+    loadThumbnails,
+    frameScene,
   };
 }

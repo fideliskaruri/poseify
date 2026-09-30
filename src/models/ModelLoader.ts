@@ -96,7 +96,8 @@ export async function loadModelFromURL(
           "three/examples/jsm/loaders/FBXLoader.js"
         );
         const loader = new FBXLoader();
-        loader.setDRACOLoader(getDraco());
+        // FBXLoader has no Draco path: FBX stores geometry uncompressed, and
+        // three's FBXLoader does not expose setDRACOLoader. Only GLTF does.
         const root = await loader.loadAsync(url);
         return { root, format };
       }

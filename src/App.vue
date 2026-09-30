@@ -20,15 +20,23 @@ const {
   setMode,
   removeModel,
   resetPose,
+  thumbnails,
+  loadThumbnails,
+  loadingId,
+  frameScene,
 } = usePosing();
 
-onMounted(init);
+onMounted(() => {
+  init();
+  loadThumbnails();
+});
 
-function addModel(config: CatalogEntry): void {
+async function addModel(config: CatalogEntry): Promise<void> {
   error.value = null;
   try {
-    const posed = attachModel(config);
+    const posed = await attachModel(config);
     setActive(posed.config.id);
+    frameScene();
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   }
@@ -64,9 +72,22 @@ const groups = computed(() => {
               v-for="m in items"
               :key="m.id"
               class="chip"
+              :class="{
+                tile: true,
+                hasThumb: !!thumbnails[m.id],
+                loading: loadingId === m.id,
+              }"
+              :disabled="loadingId === m.id"
               type="button"
               @click="addModel(m)"
             >
+              <img
+                v-if="thumbnails[m.id]"
+                class="thumb"
+                :src="thumbnails[m.id]"
+                :alt="`${m.name} preview`"
+              />
+              <span v-else class="thumb placeholder" aria-hidden="true"></span>
               {{ m.name }}
             </button>
           </div>
@@ -275,6 +296,36 @@ button.chip.small {
 button.chip.wide {
   width: 100%;
   text-align: center;
+}
+
+button.chip.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  text-align: center;
+}
+
+button.chip.tile.hasThumb {
+  padding: 3px 3px 5px;
+}
+
+.thumb {
+  width: 100%;
+  height: 58px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #1b1f27, #14171d);
+}
+
+.thumb.placeholder {
+  display: block;
+}
+
+button.chip.tile.loading {
+  border-color: var(--poseify-accent);
+  opacity: 0.6;
 }
 
 .segmented {

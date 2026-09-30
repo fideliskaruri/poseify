@@ -6,3 +6,7 @@ dist/
 tools/out/
 tools/cache/
 *.tsbuildinfo
+
+# Vendor model FBXs are PoseMy.Art's property, not ours (see ATTRIBUTION.md).
+# They are fetched by tools/fetch-models.ts and must never be committed.
+public/vendor/
