@@ -32,6 +32,16 @@ const {
   setLight,
   setGrid,
   setLightGizmo,
+  RENDER_PASSES,
+  exporting,
+  exportResults,
+  exportError,
+  exportSize,
+  exportTransparent,
+  runExport,
+  exportObjNow,
+  download,
+  clearExport,
 } = usePosing();
 
 onMounted(() => {
@@ -127,6 +137,56 @@ const groups = computed(() => {
     </aside>
 
     <aside class="panel panel-right">
+      <section>
+        <h2>Export</h2>
+        <label class="field">
+          <span>Resolution <b>{{ exportSize }}&times;{{ exportSize }}</b></span>
+          <input
+            type="range"
+            min="512"
+            max="2048"
+            step="256"
+            :value="exportSize"
+            @input="exportSize = Number(($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            :checked="exportTransparent"
+            @change="exportTransparent = ($event.target as HTMLInputElement).checked"
+          />
+          <span>Transparent background</span>
+        </label>
+        <div class="export-buttons">
+          <button
+            type="button"
+            class="chip wide"
+            :disabled="exporting || !activeModelId"
+            @click="runExport()"
+          >
+            {{ exporting ? "Rendering..." : "Export all 5" }}
+          </button>
+          <button
+            type="button"
+            class="chip wide"
+            :disabled="!activeModelId"
+            @click="
+              (() => {
+                const obj = exportObjNow();
+                if (obj) download(obj.filename, obj.text);
+              })()
+            "
+          >
+            Export OBJ
+          </button>
+        </div>
+        <p class="hint">
+          {{ RENDER_PASSES.length }} passes: regular, OpenPose, depth, canny,
+          normals.
+        </p>
+      </section>
+
       <section>
         <h2>Camera</h2>
         <label class="field">
@@ -291,6 +351,31 @@ const groups = computed(() => {
     </aside>
 
     <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <p v-if="exportError" class="error" role="alert">{{ exportError }}</p>
+
+    <section v-if="exportResults.length" class="export-strip">
+      <div class="export-head">
+        <span>Exported {{ exportResults.length }} passes</span>
+        <button type="button" class="chip small" @click="clearExport">
+          Dismiss
+        </button>
+      </div>
+      <div class="export-grid">
+        <figure v-for="r in exportResults" :key="r.pass">
+          <img :src="r.dataUrl" :alt="`${r.pass} pass`" />
+          <figcaption>
+            <span>{{ r.pass }}</span>
+            <button
+              type="button"
+              class="chip small"
+              @click="download(r.filename, r.dataUrl)"
+            >
+              Save
+            </button>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -562,5 +647,70 @@ button.chip.tile.loading {
   color: #f0b4b4;
   font-size: 12px;
   z-index: 3;
+}
+
+.export-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+button.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-strip {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  max-width: min(92vw, 860px);
+  padding: 8px 10px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--poseify-panel) 95%, transparent);
+  backdrop-filter: blur(6px);
+  z-index: 4;
+}
+
+.export-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--poseify-text-dim);
+}
+
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.export-grid figure {
+  margin: 0;
+}
+
+.export-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #0e1014;
+}
+
+.export-grid figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--poseify-text-dim);
 }
 </style>

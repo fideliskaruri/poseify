@@ -13,11 +13,30 @@ import {
 } from "../models/ModelCatalog";
 import { modelThumbnail } from "../models/ModelThumbnail";
 import type { GridState, LightState } from "../scene/SceneEnvironment";
+import {
+  RENDER_PASSES,
+  exportModelObj,
+  exportPasses,
+  type ExportResult,
+} from "../export/Exporter";
 
 export interface PosedModel {
   config: CatalogEntry;
   skeleton: PosableSkeleton;
   root: THREE.Object3D;
+}
+
+/** Decode a `data:image/png;base64,...` URL into a Blob for download. */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return new Blob([dataUrl], { type: "image/png" });
+  const meta = dataUrl.slice(0, comma);
+  const body = dataUrl.slice(comma + 1);
+  const mime = /data:([^;]+)/.exec(meta)?.[1] ?? "image/png";
+  const binary = atob(body);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
 }
 
 export function usePosing() {
@@ -215,6 +234,108 @@ export function usePosing() {
     viewport.value = null;
   }
 
+  const exporting = ref(false);
+  const exportResults = ref<ExportResult[]>([]);
+  const exportError = ref<string | null>(null);
+  const exportSize = ref(2048);
+  const exportTransparent = ref(false);
+
+  /**
+   * Scene furniture to hide while exporting: the ground grid, the light
+   * gizmo, and any model that is not the one being exported.
+   */
+  function helperObjects(): THREE.Object3D[] {
+    const vp = viewport.value;
+    if (!vp) return [];
+    const active = models.value.find((m) => m.config.id === activeModelId.value);
+    const out: THREE.Object3D[] = [];
+    for (const child of vp.scene.children) {
+      if (child.name === "Ground" || child.name === "LightGizmo") {
+        out.push(child);
+      } else if (child.type === "Group" && child !== active?.root) {
+        out.push(child);
+      }
+    }
+    return out;
+  }
+
+  async function runExport(
+    passes = RENDER_PASSES,
+  ): Promise<ExportResult[]> {
+    const vp = viewport.value;
+    const active = models.value.find((m) => m.config.id === activeModelId.value);
+    if (!vp || !active) {
+      exportError.value = "Add and select a model before exporting.";
+      return [];
+    }
+
+    exporting.value = true;
+    exportError.value = null;
+    try {
+      const results = exportPasses(
+        {
+          renderer: vp.renderer,
+          scene: vp.scene,
+          camera: vp.camera,
+          skeleton: active.skeleton,
+          helpers: helperObjects(),
+        },
+        {
+          passes,
+          options: {
+            width: exportSize.value,
+            height: exportSize.value,
+            transparent: exportTransparent.value,
+            hideHelpers: true,
+          },
+          name: active.config.id,
+        },
+      );
+      exportResults.value = results;
+      return results;
+    } catch (err) {
+      exportError.value = err instanceof Error ? err.message : String(err);
+      return [];
+    } finally {
+      exporting.value = false;
+    }
+  }
+
+  function exportObjNow(): ReturnType<typeof exportModelObj> | null {
+    const active = models.value.find((m) => m.config.id === activeModelId.value);
+    if (!active) {
+      exportError.value = "Add and select a model before exporting.";
+      return null;
+    }
+    if (!active.config.exportable) {
+      exportError.value = `${active.config.name} is not available for OBJ export.`;
+      return null;
+    }
+    exportError.value = null;
+    return exportModelObj(active.skeleton, active.config.id);
+  }
+
+  /** Trigger a browser download for a PNG data URL or a text payload. */
+  function download(filename: string, payload: string): void {
+    const blob = payload.startsWith("data:")
+      ? dataUrlToBlob(payload)
+      : new Blob([payload], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    // Revoke on the next tick so the click has been handled.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function clearExport(): void {
+    exportResults.value = [];
+    exportError.value = null;
+  }
+
   onBeforeUnmount(dispose);
 
   return {
@@ -248,5 +369,15 @@ export function usePosing() {
     resetPose,
     loadThumbnails,
     frameScene,
+    RENDER_PASSES,
+    exporting,
+    exportResults,
+    exportError,
+    exportSize,
+    exportTransparent,
+    runExport,
+    exportObjNow,
+    download,
+    clearExport,
   };
 }

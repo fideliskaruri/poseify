@@ -123,16 +123,15 @@ export function buildFixture(options: FixtureOptions = {}): Fixture {
     for (const b of ordered) b.updateMatrixWorld(true);
     const skeleton = new THREE.Skeleton(ordered);
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0], 3),
-    );
     const mesh = new THREE.SkinnedMesh(
-      geometry,
+      // A zero-area triangle: enough for CCDIKSolver, which only needs a
+      // SkinnedMesh to address, without contributing exportable geometry.
+      new THREE.BufferGeometry(),
       new THREE.MeshBasicMaterial(),
     );
+    mesh.name = "__fixture_ik_anchor";
     mesh.frustumCulled = false;
+    mesh.visible = false;
     group.add(mesh);
     group.updateMatrixWorld(true);
     mesh.bind(skeleton);
