@@ -27,6 +27,14 @@ import {
   type Pose,
 } from "../pose/Pose";
 import { poseThumbnailer } from "../pose/PoseThumbnail";
+import {
+  ClipPlayer,
+  collectClipTags,
+  filterClips,
+  loadClipLibrary,
+  type AnimationClip,
+  type ClipSummary,
+} from "../anim/ClipPlayer";
 
 export interface PosedModel {
   config: CatalogEntry;
@@ -222,6 +230,8 @@ export function usePosing() {
     vp.scene.add(pc.helper);
     controller.value = pc;
 
+    // Clip playback advances on the render loop's clock.
+    vp.onFrame = (delta) => updateClip(delta);
     vp.start();
     status.value = "running";
 
@@ -411,6 +421,99 @@ export function usePosing() {
     poseThumbs.value = next;
   }
 
+  // ---------------------------------------------------------- animations
+
+  const clipSummaries = ref<ClipSummary[]>([]);
+  const clipSearch = ref("");
+  const clipError = ref<string | null>(null);
+  const playing = ref(false);
+  const clipTime = ref(0);
+  const clipDuration = ref(0);
+  const clipFrame = ref(0);
+  const activeClipId = ref<string | null>(null);
+  const clipPlayer = new ClipPlayer();
+
+  const visibleClips = computed(() =>
+    filterClips(clipSummaries.value as unknown as AnimationClip[], {
+      search: clipSearch.value,
+    }),
+  );
+
+  /** Load the clip manifest so the picker can list every clip. */
+  async function loadClips(): Promise<void> {
+    clipError.value = null;
+    const library = await loadClipLibrary();
+    clipSummaries.value = library.clips;
+    if (library.clips.length === 0) {
+      clipError.value =
+        "No motion clips found. Run `npm run clips:build` to fetch and convert them.";
+    }
+  }
+
+  /** Push a clip frame onto the active model as a static pose. */
+  function applyFrame(frame: {
+    rotations: Record<string, [number, number, number, number]>;
+  }): void {
+    const active = models.value.find((m) => m.config.id === activeModelId.value);
+    if (!active) return;
+    active.skeleton.applyPose(frame.rotations);
+  }
+
+  async function selectClip(id: string): Promise<boolean> {
+    clipError.value = null;
+    const ok = await clipPlayer.load(id);
+    if (!ok) {
+      clipError.value = `Could not load clip ${id}.`;
+      return false;
+    }
+    activeClipId.value = id;
+    clipDuration.value = clipPlayer.duration;
+    clipTime.value = 0;
+    clipFrame.value = 0;
+
+    clipPlayer.onFrame = (frame, index) => {
+      applyFrame(frame);
+      clipFrame.value = index;
+    };
+    // Show the first frame immediately so selecting a clip previews it.
+    const first = clipPlayer.currentFrame();
+    if (first) applyFrame(first);
+    return true;
+  }
+
+  function togglePlayback(): void {
+    if (!activeClipId.value) return;
+    clipPlayer.toggle();
+    playing.value = clipPlayer.playing;
+  }
+
+  function stopPlayback(): void {
+    clipPlayer.stop();
+    playing.value = false;
+    clipTime.value = 0;
+  }
+
+  /** Scrub. The frozen frame stays applied as a static pose. */
+  function seekClip(seconds: number): void {
+    clipPlayer.seek(seconds);
+    clipTime.value = clipPlayer.time;
+    playing.value = clipPlayer.playing;
+  }
+
+  function stepClip(frames: number): void {
+    clipPlayer.step(frames);
+    clipTime.value = clipPlayer.time;
+    playing.value = clipPlayer.playing;
+  }
+
+  /** Advance playback; called from the render loop. */
+  function updateClip(deltaSeconds: number): void {
+    if (!clipPlayer.playing) return;
+    clipPlayer.update(deltaSeconds);
+    clipTime.value = clipPlayer.time;
+    playing.value = clipPlayer.playing;
+  }
+
   onBeforeUnmount(dispose);
 
   return {
@@ -464,5 +567,20 @@ export function usePosing() {
     togglePoseTag,
     applyPose,
     loadPoseThumbnails,
+    clipSummaries,
+    clipSearch,
+    clipError,
+    playing,
+    clipTime,
+    clipDuration,
+    clipFrame,
+    activeClipId,
+    visibleClips,
+    loadClips,
+    selectClip,
+    togglePlayback,
+    stopPlayback,
+    seekClip,
+    stepClip,
   };
 }

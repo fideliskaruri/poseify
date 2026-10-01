@@ -67,13 +67,23 @@ export class Viewport {
   }
 
   start(): void {
+    let previous = performance.now();
     const loop = (): void => {
       this.frameHandle = requestAnimationFrame(loop);
+      const now = performance.now();
+      // Clamped so a backgrounded tab does not jump the animation forward by
+      // however long it was hidden.
+      const delta = Math.min((now - previous) / 1000, 0.1);
+      previous = now;
+      this.onFrame?.(delta);
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
     };
     loop();
   }
+
+  /** Called every rendered frame with the elapsed seconds. */
+  onFrame: ((deltaSeconds: number) => void) | null = null;
 
   stop(): void {
     cancelAnimationFrame(this.frameHandle);

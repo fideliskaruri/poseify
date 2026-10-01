@@ -7,6 +7,9 @@ tools/out/
 tools/cache/
 *.tsbuildinfo
 
+# CMU mocap source files (hundreds of MB, refetched by `npm run clips:build`).
+tools/cache/cmu/
+
 # Vendor model FBXs are PoseMy.Art's property, not ours (see ATTRIBUTION.md).
 # They are fetched by tools/fetch-models.ts and must never be committed.
 public/vendor/

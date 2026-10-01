@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "models:fetch": "vite-node tools/fetch-models.ts",
-    "models:verify": "vite-node tools/verify-models.ts"
+    "models:verify": "vite-node tools/verify-models.ts",
+    "clips:build": "vite-node tools/build-clips.ts"
   },
   "dependencies": {
     "three": "^0.169.0"

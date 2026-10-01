@@ -52,11 +52,26 @@ const {
   togglePoseTag,
   applyPose,
   loadPoseThumbnails,
+  clipSummaries,
+  clipError,
+  playing,
+  clipTime,
+  clipDuration,
+  clipFrame,
+  activeClipId,
+  visibleClips,
+  loadClips,
+  selectClip,
+  togglePlayback,
+  stopPlayback,
+  seekClip,
+  stepClip,
 } = usePosing();
 
 onMounted(() => {
   init();
   loadThumbnails();
+  void loadClips();
 });
 
 async function addModel(config: CatalogEntry): Promise<void> {
@@ -391,6 +406,79 @@ watch(
           {{ visiblePoses.length }}
           {{ visiblePoses.length === 1 ? "pose" : "poses" }} shown
         </p>
+      </section>
+
+      <section v-if="activeModelId">
+        <h2>Animation</h2>
+        <p v-if="clipError" class="hint warn">{{ clipError }}</p>
+        <p v-else-if="clipSummaries.length === 0" class="hint">
+          Loading clips...
+        </p>
+        <template v-else>
+          <label class="field">
+            <span>Search clips</span>
+            <input v-model="clipSearch" type="search" placeholder="clip id" />
+          </label>
+
+          <div class="clip-list">
+            <button
+              v-for="clip in visibleClips.slice(0, 40)"
+              :key="clip.id"
+              type="button"
+              class="clip-row"
+              :class="{ on: clip.id === activeClipId }"
+              @click="selectClip(clip.id)"
+            >
+              {{ clip.name }}
+              <span class="clip-meta">{{ clip.durationSeconds.toFixed(1) }}s</span>
+            </button>
+          </div>
+
+          <div v-if="activeClipId" class="transport">
+            <div class="transport-buttons">
+              <button
+                type="button"
+                class="chip small"
+                title="Previous frame"
+                @click="stepClip(-1)"
+              >
+                &#9664;&#9646;
+              </button>
+              <button type="button" class="chip small wide" @click="togglePlayback">
+                {{ playing ? "Pause" : "Play" }}
+              </button>
+              <button
+                type="button"
+                class="chip small"
+                title="Next frame"
+                @click="stepClip(1)"
+              >
+                &#9654;&#9646;
+              </button>
+              <button
+                type="button"
+                class="chip small"
+                title="Stop"
+                @click="stopPlayback"
+              >
+                &#9632;
+              </button>
+            </div>
+            <input
+              class="scrub"
+              type="range"
+              min="0"
+              :max="clipDuration"
+              step="0.01"
+              :value="clipTime"
+              @input="seekClip(Number(($event.target as HTMLInputElement).value))"
+            />
+            <p class="hint">
+              frame {{ clipFrame }} &middot;
+              {{ clipTime.toFixed(2) }}s / {{ clipDuration.toFixed(2) }}s
+            </p>
+          </div>
+        </template>
       </section>
 
       <section v-if="activeModelId">
@@ -784,6 +872,67 @@ button.tag.on {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.clip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 6px 0;
+}
+
+.clip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 5px;
+  background: #232833;
+  color: var(--poseify-text);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.clip-row:hover {
+  border-color: var(--poseify-accent);
+}
+
+.clip-row.on {
+  border-color: var(--poseify-accent);
+  background: color-mix(in srgb, var(--poseify-accent) 24%, #232833);
+}
+
+.clip-meta {
+  color: var(--poseify-text-dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.transport {
+  margin-top: 6px;
+}
+
+.transport-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.transport-buttons .chip.wide {
+  grid-column: span 2;
+}
+
+.scrub {
+  width: 100%;
+  height: 18px;
+  margin-top: 4px;
+  accent-color: var(--poseify-accent);
+  cursor: pointer;
 }
 
 .error {
