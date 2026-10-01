@@ -232,6 +232,48 @@ export class PosableSkeleton {
     }
   }
 
+  /**
+   * Apply a hand pose to the finger bones only, leaving the body untouched.
+   *
+   * The separate entry point is the point of the whole subsystem: "paste hand
+   * only" must not disturb a body pose the artist has already built. Returns the
+   * bones it could not apply so the caller can say why a model without fingers
+   * did nothing, rather than failing silently.
+   */
+  applyHandPose(hand: PoseData): string[] {
+    const missing: string[] = [];
+    for (const [name, r] of Object.entries(hand)) {
+      if (!this.bones.has(name)) {
+        missing.push(name);
+        continue;
+      }
+      this.setBoneRotation(name, new THREE.Quaternion(r[0], r[1], r[2], r[3]));
+    }
+    return missing;
+  }
+
+  /**
+   * Snapshot just the finger bones, for Copy Pose (And Hand Pose).
+   *
+   * Returning the hands separately from getPose() is what keeps the two
+   * channels independent: pasting the body back cannot disturb the hands, and
+   * vice versa.
+   */
+  getHandPose(): PoseData {
+    const handSet = new Set(HAND_BONES);
+    const out: PoseData = {};
+    for (const [name, r] of Object.entries(this.rotations)) {
+      if (handSet.has(name)) out[name] = [r[0], r[1], r[2], r[3]];
+    }
+    return out;
+  }
+
+  /** Reset every finger bone to bind, leaving the body pose alone. */
+  resetHandPose(): void {
+    for (const name of Object.keys(this.rotations)) {
+      if (HAND_BONES.includes(name)) this.resetBone(name);
+    }
+  }
   private readonly rootOffset = new THREE.Vector3();
 
   // ------------------------------------------------------------------ IK
@@ -396,3 +438,4 @@ function findSkinnedMesh(root: THREE.Object3D): THREE.SkinnedMesh | null {
   });
   return found;
 }
+

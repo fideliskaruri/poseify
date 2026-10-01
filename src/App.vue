@@ -44,6 +44,16 @@ const {
   inPlace,
   applyRandomPose,
   clipboardStatus,
+  handSide,
+  handPoseError,
+  setHandSide,
+  handPoseStatus,
+  handPoseSearch,
+  visibleHandPoses,
+  applyHandPose,
+  copyHandPose,
+  pasteHandOnly,
+  resetHands,
   thumbnails,
   loadThumbnails,
   loadingId,
@@ -884,6 +894,71 @@ watch(
       </section>
 
       <section v-if="activeModelId">
+        <h2>Hand poses</h2>
+        <p class="hint">
+          Hands transfer independently of the body, so a finished pose keeps its
+          articulation while you refine the hands.
+        </p>
+        <div class="row wrap">
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: handSide === 'Left' }"
+            @click="setHandSide('Left')"
+          >
+            Left
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: handSide === 'Right' }"
+            @click="setHandSide('Right')"
+          >
+            Right
+          </button>
+        </div>
+        <div class="row wrap">
+          <button type="button" class="chip" @click="copyHandPose()">
+            Copy pose (and hand)
+          </button>
+          <button type="button" class="chip" @click="pasteHandOnly()">
+            Paste hand only
+          </button>
+          <button type="button" class="chip" @click="resetHands()">
+            Reset hands
+          </button>
+        </div>
+        <p v-if="handPoseStatus" class="hint">{{ handPoseStatus }}</p>
+        <p v-if="handPoseError" class="hint warn">{{ handPoseError }}</p>
+
+        <label class="field">
+          <span>Search hand poses</span>
+          <input
+            v-model="handPoseSearch"
+            type="search"
+            placeholder="e.g. grip, point, fist"
+          />
+        </label>
+        <div class="pose-grid">
+          <button
+            v-for="pose in visibleHandPoses"
+            :key="pose.id"
+            type="button"
+            class="pose-tile hand-tile"
+            :title="`${pose.name} — ${pose.tags.join(', ')}`"
+            @click="applyHandPose(pose)"
+          >
+            <span class="thumb placeholder hand-thumb" aria-hidden="true"></span>
+            <span class="pose-name">{{ pose.name }}</span>
+          </button>
+        </div>
+        <p class="hint">
+          {{ visibleHandPoses.length }}
+          {{ visibleHandPoses.length === 1 ? "hand pose" : "hand poses" }}
+        </p>
+      </section>
+
+      <section v-if="activeModelId">
         <h2>Animation</h2>
         <p v-if="clipError" class="hint warn">{{ clipError }}</p>
         <p v-else-if="clipSummaries.length === 0" class="hint">
@@ -1402,6 +1477,14 @@ button.chip.wide {
   background: #1b1f27;
   color: var(--poseify-text);
   font-size: 11px;
+}
+
+.hand-tile {
+  align-items: stretch;
+}
+
+.hand-thumb {
+  aspect-ratio: 3 / 4;
 }
 
 .gizmo-modes button.chip {
@@ -2040,5 +2123,8 @@ button.chip:disabled {
   background: #6fb4ff;
 }
 </style>
+
+
+
 
 

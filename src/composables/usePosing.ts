@@ -29,6 +29,14 @@ import type { ObjExportResult } from "../export/Exporter";
 import { POSE_LIBRARY } from "../pose/PoseLibrary";
 import { PoseClipboard, randomPoseIndex } from "../pose/PoseClipboard";
 import {
+  HAND_POSE_LIBRARY,
+  collectHandTags,
+  findHandPose,
+  handPosesForSide,
+} from "../pose/HandPoseLibrary";
+import { canApplyHandPose, missingHandBones, type HandPose } from "../pose/HandPose";
+import type { HandSide } from "../rig/RigContract";
+import {
   mirrorLimb,
   mirrorPose,
 } from "../pose/PoseAuthoring";
@@ -284,6 +292,116 @@ export function usePosing() {
 
   // ------------------------------------------- Phase 2: pose surgery
 
+  // -------------------------------------------------- Phase 5: hand posing
+
+  const handSide = ref<HandSide>("Left");
+  function setHandSide(side: HandSide): void {
+    handSide.value = side;
+  }
+  const handPoseError = ref<string | null>(null);
+  const handPoseSearch = ref("");
+  const handClipboard = new PoseClipboard();
+
+  /** Hand poses for the chosen side, filtered by the search box. */
+  const visibleHandPoses = computed(() => {
+    const needle = handPoseSearch.value.trim().toLowerCase();
+    const pool = handPosesForSide(handSide.value);
+    if (!needle) return pool;
+    return pool.filter(
+      (p) =>
+        p.name.toLowerCase().includes(needle) ||
+        p.tags.some((t) => t.toLowerCase().includes(needle)),
+    );
+  });
+
+  const allHandTags = collectHandTags();
+
+  /**
+   * Apply a hand pose to the active model.
+   *
+   * Reports exactly which bones the model lacks rather than failing silently:
+   * the horse and the mermaids have no fingers, and an artist who presses a
+   * hand pose and sees nothing happen has no way to tell why.
+   */
+  function applyHandPose(pose: HandPose): boolean {
+    const skeleton = activeSkeleton();
+    if (!skeleton) {
+      handPoseError.value = "Add and select a model first.";
+      return false;
+    }
+    const known = new Set(skeleton.getBoneNames());
+    if (!canApplyHandPose(pose, known)) {
+      const missing = missingHandBones(pose, known);
+      const shown = missing.slice(0, 3).join(", ");
+      const more = missing.length > 3 ? ", ..." : "";
+      handPoseError.value =
+        `${activeModelName.value} cannot take "${pose.name}": ` +
+        `missing ${missing.length} finger bone(s) (${shown}${more}).`;
+      return false;
+    }
+    skeleton.applyHandPose(pose.bones);
+    handPoseError.value = null;
+    handPoseStatus.value = `Applied ${pose.name} to the ${pose.side.toLowerCase()} hand`;
+    commit();
+    return true;
+  }
+
+  const handPoseStatus = ref<string | null>(null);
+
+  function activeModelName(): string {
+    return (
+      models.value.find((m) => m.config.id === activeModelId.value)?.config.name ??
+      "This model"
+    );
+  }
+
+  /** Copy the current finger bones to the hand clipboard. */
+  function copyHandPose(): void {
+    const skeleton = activeSkeleton();
+    if (!skeleton) {
+      handPoseError.value = "Add and select a model first.";
+      return;
+    }
+    const hands = skeleton.getHandPose();
+    const ok = handClipboard.copy(hands, activeModelId.value ?? "model");
+    handPoseStatus.value = ok
+      ? `Copied ${Object.keys(hands).length} finger bones`
+      : "There are no finger bones set to copy";
+  }
+
+  /**
+   * Paste the hand clipboard without touching the body pose.
+   *
+   * This is the command the whole subsystem exists for: an artist with a
+   * finished body pose fixes the hands without re-picking anything.
+   */
+  function pasteHandOnly(): void {
+    const skeleton = activeSkeleton();
+    const held = handClipboard.paste();
+    if (!skeleton || !held || Object.keys(held).length === 0) {
+      handPoseError.value = "The hand clipboard is empty.";
+      return;
+    }
+    const missing = skeleton.applyHandPose(held);
+    if (missing.length > 0) {
+      handPoseError.value =
+        `${activeModelName()} is missing ${missing.length} of those finger bones.`;
+      return;
+    }
+    handPoseError.value = null;
+    handPoseStatus.value = `Pasted ${Object.keys(held).length} finger bones`;
+    commit();
+  }
+
+  /** Reset every finger bone to bind, leaving the body pose alone. */
+  function resetHands(): void {
+    const skeleton = activeSkeleton();
+    if (!skeleton) return;
+    skeleton.resetHandPose();
+    handPoseError.value = null;
+    handPoseStatus.value = "Hands reset";
+    commit();
+  }
   const clipboard = new PoseClipboard();
   const clipboardStatus = ref<string | null>(null);
 
@@ -1693,6 +1811,17 @@ export function usePosing() {
     inPlace,
     applyRandomPose,
     clipboardStatus,
+    handSide,
+    setHandSide,
+    handPoseError,
+    handPoseStatus,
+    handPoseSearch,
+    visibleHandPoses,
+    allHandTags,
+    applyHandPose,
+    copyHandPose,
+    pasteHandOnly,
+    resetHands,
     loadThumbnails,
     frameScene,
     RENDER_PASSES,
@@ -1788,6 +1917,9 @@ export function usePosing() {
     replayTour,
   };
 }
+
+
+
 
 
 
