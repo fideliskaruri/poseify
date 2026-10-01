@@ -53,7 +53,12 @@ const CONCURRENCY = 4;
 const MIN_GAP_MS = 450;
 const COLD_GAP_MS = 2000;
 const MAX_ATTEMPTS = 5;
-const REQUEST_TIMEOUT_MS = 30_000;
+// The largest model is ~7.9 MB. On a cold or throttled connection that can
+// take longer than 30s, and a timeout is recorded as "unknown", so a too-short
+// budget silently drops a real file from the library.
+const REQUEST_TIMEOUT_MS = 120_000;
+// Extra single-file sweeps for anything the CDN throttled rather than refused.
+const UNKNOWN_SWEEPS = 3;
 
 type Outcome = "ok" | "missing" | "unknown";
 
@@ -315,6 +320,33 @@ await Promise.all(
     }
   }),
 );
+
+// A throttled file is not a missing file. The first pass can exhaust its
+// retries while the CDN is rate limiting us, which on a cold `npm install`
+// silently produced a 29-model catalogue instead of 33. Re-queue anything that
+// came back "unknown", one at a time at the cold gap, so a burst-throttled
+// fetch still converges on the real answer.
+for (let sweep = 1; sweep <= UNKNOWN_SWEEPS; sweep += 1) {
+  const retry = [...results]
+    .filter((r) => r.outcome === "unknown")
+    .map((r) => candidates.find((c) => c.file === r.file))
+    .filter((c): c is (typeof candidates)[number] => !!c);
+  if (retry.length === 0) break;
+  console.log(
+    `\nretry sweep ${sweep}: ${retry.length} throttled file(s) at a cold rate`,
+  );
+  consecutiveUnknown = 0;
+  // Re-queueing needs the results array pruned, or fetchCandidate's early
+  // return on an existing entry would skip the retry.
+  for (const c of retry) {
+    const at = results.findIndex((r) => r.file === c.file);
+    if (at !== -1) results.splice(at, 1);
+  }
+  for (const c of retry) {
+    await reserveSlot();
+    await fetchCandidate(c);
+  }
+}
 
 const sorted = [...results].sort((a, b) => a.file.localeCompare(b.file));
 const okRows = sorted.filter((r) => r.outcome === "ok");

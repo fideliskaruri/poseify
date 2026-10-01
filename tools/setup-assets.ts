@@ -6,7 +6,7 @@
 // run, and a failure never fails the install itself, because a developer with
 // no network should still be able to install, build and run the tests.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,24 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MODEL_DIR = join(ROOT, "public", "vendor", "pose-my-art");
 const CLIP_DIR = join(ROOT, "public", "vendor", "mocap", "clips");
+const CATALOG = join(ROOT, "src", "models", "VendorCatalog.ts");
+
+/** Every FBX the shipped catalogue references. */
+function catalogFiles(): string[] {
+  const src = readFileSync(CATALOG, "utf8");
+  return [...src.matchAll(/"([\w.-]+\.fbx)"/g)].map((m) => m[1]);
+}
+
+/**
+ * Counting files is not enough: a throttled fetch leaves a partial directory
+ * behind, and that used to satisfy the check and ship a short model library.
+ * Require every file the catalogue actually references.
+ */
+function catalogComplete(): boolean {
+  if (!existsSync(CATALOG)) return false;
+  const files = catalogFiles();
+  return files.length > 0 && files.every((f) => existsSync(join(MODEL_DIR, f)));
+}
 
 function run(script: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -41,7 +59,7 @@ function run(script: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
-  const haveModels = existsSync(MODEL_DIR);
+  const haveModels = catalogComplete();
   const haveClips = existsSync(CLIP_DIR);
 
   if (haveModels && haveClips) {
@@ -55,6 +73,15 @@ async function main(): Promise<void> {
       console.warn(
         "poseify: could not fetch models. The app will start but the model " +
           "library will be empty. Re-run `npm run models:fetch` when online.",
+      );
+    } else if (!catalogComplete()) {
+      const missing = catalogFiles().filter(
+        (f) => !existsSync(join(MODEL_DIR, f)),
+      );
+      console.warn(
+        `poseify: fetch finished but ${missing.length} model(s) are still ` +
+          `missing, so the library will be incomplete: ${missing.join(", ")}. ` +
+          "Re-run `npm run models:fetch` when the CDN is not rate limiting.",
       );
     }
   }
