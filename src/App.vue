@@ -110,12 +110,16 @@ const {
   poseTagFilter,
   appliedPoseId,
   poseError,
+  poseLibraryError,
+  generatedPoseCount,
+  loadGeneratedLibrary,
   poseThumbs,
   allPoseTags,
   visiblePoses,
   togglePoseTag,
   applyPose,
   loadPoseThumbnails,
+  clipSearch,
   clipSummaries,
   clipError,
   playing,
@@ -178,6 +182,7 @@ onMounted(() => {
   loadThumbnails();
   void loadClips();
   refreshSavedScenes();
+  void loadGeneratedLibrary();
 });
 
 onMounted(() => {
@@ -797,6 +802,12 @@ watch(
         <p class="hint">
           {{ visiblePoses.length }}
           {{ visiblePoses.length === 1 ? "pose" : "poses" }} shown
+        </p>
+        <p v-if="poseLibraryError" class="hint warn">
+          Generated poses unavailable: {{ poseLibraryError }}
+        </p>
+        <p v-else-if="generatedPoseCount" class="hint">
+          Including {{ generatedPoseCount }} generated poses.
         </p>
       </section>
 
@@ -2299,6 +2310,7 @@ button.chip:disabled {
   background: #6fb4ff;
 }
 </style>
+
 
 
 

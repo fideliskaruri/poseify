@@ -44,6 +44,7 @@ import {
 import { exportSceneObj, type SceneObjSource } from "../export/ObjExport";
 import type { ObjExportResult } from "../export/Exporter";
 import { POSE_LIBRARY } from "../pose/PoseLibrary";
+import { loadGeneratedPoses } from "../pose/GeneratedPoseLibrary";
 import { PoseClipboard, randomPoseIndex } from "../pose/PoseClipboard";
 import {
   HAND_POSE_LIBRARY,
@@ -1086,10 +1087,41 @@ export function usePosing() {
   // its root drop rather than needing the artist to re-pick it.
   const lastPose = shallowRef<Pose | null>(null);
 
-  const allPoseTags = collectTags(POSE_LIBRARY);
+  // Phase 7: the generated library is fetched once and merged in. The authored
+  // 98 come first so a freshly opened picker leads with the hand-written poses
+  // an artist curated, rather than 1,200 generated ones.
+  const generatedPoses = shallowRef<readonly Pose[]>([]);
+  const poseLibraryError = ref<string | null>(null);
+
+  /**
+   * Fetch the generated library once, and never let a missing payload take the
+   * picker down: the authored poses still work and the message says how to
+   * rebuild.
+   */
+  async function loadGeneratedLibrary(): Promise<void> {
+    try {
+      generatedPoses.value = await loadGeneratedPoses();
+      poseLibraryError.value = null;
+    } catch (err) {
+      poseLibraryError.value = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /** Total poses across both libraries, for the picker count. */
+  const generatedPoseCount = computed(() => generatedPoses.value.length);
+
+  const poseLibrary = computed<readonly Pose[]>(() => [
+    ...POSE_LIBRARY,
+    ...generatedPoses.value,
+  ]);
+
+  // Must be a computed, not a one-shot call: the generated library arrives after
+  // setup, so a value read here would be captured from an empty array and the
+  // picker would only ever offer the authored tags.
+  const allPoseTags = computed(() => collectTags(poseLibrary.value));
 
   const visiblePoses = computed(() =>
-    filterPoses(POSE_LIBRARY, {
+    filterPoses(poseLibrary.value, {
       search: poseSearch.value,
       tags: poseTagFilter.value,
     }),
@@ -2030,6 +2062,9 @@ export function usePosing() {
     poseTagFilter,
     appliedPoseId,
     poseError,
+    poseLibraryError,
+    generatedPoseCount,
+    loadGeneratedLibrary,
     poseThumbs,
     allPoseTags,
     visiblePoses,
@@ -2103,6 +2138,9 @@ export function usePosing() {
     replayTour,
   };
 }
+
+
+
 
 
 
