@@ -85,17 +85,47 @@ describe("PosableSkeleton - FK", () => {
 
   it("resetBone restores the bind rotation", () => {
     const sk = makeSkeleton();
-    const bind = sk.getBoneQuaternion("Spine")!.clone();
+    // At rest there is no authored rotation, and the bone sits at bind.
+    expect(sk.getBoneQuaternion("Spine")).toBeNull();
+    const bind = sk.getBone("Spine")!.quaternion.clone();
     sk.rotateBone("Spine", new THREE.Euler(0.4, 0.5, 0.6));
-    expect(sk.getBoneQuaternion("Spine")!.angleTo(bind)).toBeGreaterThan(0.1);
+    expect(sk.getBone("Spine")!.quaternion.angleTo(bind)).toBeGreaterThan(0.1);
     sk.resetBone("Spine");
-    expect(sk.getBoneQuaternion("Spine")!.angleTo(bind)).toBeLessThan(1e-6);
+    expect(sk.getBoneQuaternion("Spine")).toBeNull();
+    expect(sk.getBone("Spine")!.quaternion.angleTo(bind)).toBeLessThan(1e-6);
   });
 
   it("ignores unknown bone names", () => {
     const sk = makeSkeleton();
     expect(sk.rotateBone("NoSuchBone", new THREE.Euler(1, 1, 1))).toBe(false);
     expect(sk.getWorldPosition("NoSuchBone")).toBeNull();
+  });
+
+  it("applies rotations on top of bind, not instead of it", () => {
+    // Two rigs with different rest orientations must still carry the same
+    // authored rotation, or a pose would not transfer between them.
+    const a = makeSkeleton("a");
+    const b = makeSkeleton("b");
+
+    const bindB = b.getBone("Spine")!.quaternion.clone();
+    b.getBone("Spine")!.quaternion.copy(
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, 0, 0)),
+    );
+
+    const rot = new THREE.Euler(0, 0.4, 0);
+    a.rotateBone("Spine", rot);
+    b.rotateBone("Spine", rot);
+
+    // The authored rotation is identical across both rigs.
+    expect(
+      b.getBoneQuaternion("Spine")!.angleTo(a.getBoneQuaternion("Spine")!),
+    ).toBeLessThan(1e-6);
+    // Each bone keeps its own bind orientation underneath it.
+    expect(
+      a.getBone("Spine")!.quaternion.angleTo(bindB),
+    ).toBeGreaterThan(0.1);
+    b.resetBone("Spine");
+    expect(b.getBone("Spine")!.quaternion.angleTo(bindB)).toBeLessThan(1e-6);
   });
 });
 

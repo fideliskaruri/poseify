@@ -18,6 +18,17 @@ export type PoseAngles = Readonly<
   Record<string, readonly [number, number, number]>
 >;
 
+/**
+ * Optional per-pose root translation in metres, applied on top of the rig's
+ * bind offset.
+ *
+ * The rig has no pelvis bone, and `Hips` is the skeleton root, so rotating it
+ * spins the whole figure without lowering it. Seated and kneeling poses
+ * therefore have to lower the root explicitly; without this the figure floats
+ * above a chair or a floor.
+ */
+export type PoseRootOffset = readonly [number, number, number];
+
 const scratchEuler = new THREE.Euler();
 const scratchQuat = new THREE.Quaternion();
 

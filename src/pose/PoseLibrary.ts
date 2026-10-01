@@ -11,6 +11,12 @@
 //   Elbow Z         -> bends the elbow
 //   Leg X           -> swings the leg forward or back
 //   Knee X          -> bends the knee (negative bends backward, as knees do)
+//
+// Measured on the contract rest pose (see tests/pose-derivation): a positive
+// UpLeg X rotation swings the thigh BACKWARD (-Z) and a NEGATIVE one swings it
+// forward (+Z). With the thigh forward, the knee must fold the shin down,
+// which is the OPPOSITE sign again. The Hips bone never translates, so seated
+// and kneeling poses also carry an explicit root drop.
 
 import type { Pose, PoseAngles } from "./Pose";
 import { anglesToPose, mirrorPose } from "./PoseAuthoring";
@@ -18,6 +24,8 @@ import { anglesToPose, mirrorPose } from "./PoseAuthoring";
 interface PoseSpec {
   tags: readonly string[];
   poses: Record<string, PoseAngles>;
+  // Root drop applied to every pose in this category, in metres.
+  rootOffset?: [number, number, number];
 }
 
 // ---------------------------------------------------------------- standing
@@ -129,19 +137,19 @@ const STANDING: Record<string, PoseAngles> = {
 
 const SITTING: Record<string, PoseAngles> = {
   seated_relaxed: {
-    LeftUpLeg: [88, 0, 4],
-    RightUpLeg: [88, 0, -4],
-    LeftLeg: [-84, 0, 0],
-    RightLeg: [-84, 0, 0],
+    LeftUpLeg: [-80, 0, 4],
+    RightUpLeg: [-80, 0, -4],
+    LeftLeg: [76, 0, 0],
+    RightLeg: [76, 0, 0],
     Spine: [-4, 0, 0],
     LeftArm: [12, 0, 8],
     RightArm: [12, 0, -8],
   },
   seated_forward_lean: {
-    LeftUpLeg: [86, 0, 4],
-    RightUpLeg: [86, 0, -4],
-    LeftLeg: [-82, 0, 0],
-    RightLeg: [-82, 0, 0],
+    LeftUpLeg: [-84, 0, 4],
+    RightUpLeg: [-84, 0, -4],
+    LeftLeg: [80, 0, 0],
+    RightLeg: [80, 0, 0],
     Spine: [10, 0, 0],
     Spine1: [8, 0, 0],
     Neck: [6, 0, 0],
@@ -149,38 +157,38 @@ const SITTING: Record<string, PoseAngles> = {
     RightArm: [26, 0, -14],
   },
   seated_crossed_legs: {
-    LeftUpLeg: [86, 0, 18],
-    RightUpLeg: [86, 0, -6],
-    LeftLeg: [-80, 0, 0],
-    RightLeg: [-96, 14, 0],
-    LeftFoot: [10, 0, 0],
+    LeftUpLeg: [-84, 0, 18],
+    RightUpLeg: [-84, 0, -6],
+    LeftLeg: [78, 0, 0],
+    RightLeg: [-94, 14, 0],
+    LeftFoot: [-10, 0, 0],
     Spine: [-3, -4, 0],
     LeftArm: [16, 0, 12],
     RightArm: [10, 0, -10],
   },
   seated_legs_together: {
-    LeftUpLeg: [90, 0, 1],
-    RightUpLeg: [90, 0, -1],
-    LeftLeg: [-88, 0, 0],
-    RightLeg: [-88, 0, 0],
+    LeftUpLeg: [-88, 0, 1],
+    RightUpLeg: [-88, 0, -1],
+    LeftLeg: [84, 0, 0],
+    RightLeg: [84, 0, 0],
     LeftArm: [14, 0, 6],
     RightArm: [14, 0, -6],
   },
   seated_hands_on_knees: {
-    LeftUpLeg: [88, 0, 3],
-    RightUpLeg: [88, 0, -3],
-    LeftLeg: [-86, 0, 0],
-    RightLeg: [-86, 0, 0],
+    LeftUpLeg: [-86, 0, 3],
+    RightUpLeg: [-86, 0, -3],
+    LeftLeg: [82, 0, 0],
+    RightLeg: [82, 0, 0],
     LeftArm: [34, 0, 8],
     RightArm: [34, 0, -8],
     LeftForeArm: [0, 0, -14],
     RightForeArm: [0, 0, -14],
   },
   sitting_edge_of_seat: {
-    LeftUpLeg: [84, 0, 5],
-    RightUpLeg: [84, 0, -5],
-    LeftLeg: [-70, 0, 0],
-    RightLeg: [-70, 0, 0],
+    LeftUpLeg: [-82, 0, 5],
+    RightUpLeg: [-82, 0, -5],
+    LeftLeg: [66, 0, 0],
+    RightLeg: [66, 0, 0],
     Spine: [6, 0, 0],
     LeftArm: [8, 0, 14],
     RightArm: [8, 0, -14],
@@ -965,12 +973,14 @@ const GESTURE: Record<string, PoseAngles> = {
 
 const CATEGORIES: PoseSpec[] = [
   { tags: ["standing"], poses: STANDING },
-  { tags: ["sitting"], poses: SITTING },
+  // Seated: the root drops so the hips meet a 0.45 m seat.
+  { tags: ["sitting"], poses: SITTING, rootOffset: [0, -0.5, 0] },
   { tags: ["walking"], poses: WALKING },
   { tags: ["running"], poses: RUNNING },
   { tags: ["fighting"], poses: FIGHTING },
   { tags: ["aiming"], poses: AIMING },
-  { tags: ["kneeling"], poses: KNEELING },
+  // Kneeling: the root drops so the shins meet the floor.
+  { tags: ["kneeling"], poses: KNEELING, rootOffset: [0, -0.45, 0] },
   { tags: ["lying"], poses: LYING },
   { tags: ["dancing"], poses: DANCING },
   { tags: ["gesture"], poses: GESTURE },
@@ -985,13 +995,14 @@ function titleise(key: string): string {
 
 function buildLibrary(): Pose[] {
   const out: Pose[] = [];
-  for (const { tags, poses } of CATEGORIES) {
+  for (const { tags, poses, rootOffset } of CATEGORIES) {
     for (const [key, angles] of Object.entries(poses)) {
       out.push({
         id: key,
         name: titleise(key),
         tags,
         bones: anglesToPose(angles),
+        ...(rootOffset ? { rootOffset } : {}),
         source: "authored",
       });
     }
@@ -1053,3 +1064,4 @@ export const POSE_LIBRARY: readonly Pose[] = buildLibrary();
 export function findPoseById(id: string): Pose | undefined {
   return POSE_LIBRARY.find((p) => p.id === id);
 }
+

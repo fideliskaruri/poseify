@@ -19,6 +19,13 @@ export interface Pose {
   tags: readonly string[];
   // Contract bone name -> local quaternion.
   bones: PoseData;
+  /**
+   * Root translation in metres applied on top of the rig bind offset.
+   * Seated and kneeling poses need this: the rig has no pelvis bone and Hips
+   * is the skeleton root, so rotating it spins the figure without lowering it
+   * onto the prop or the floor.
+   */
+  rootOffset?: [number, number, number];
   source: PoseSource;
 }
 
@@ -89,6 +96,7 @@ export function poseToJson(pose: Pose): string {
       tags: pose.tags,
       source: pose.source,
       bones: pose.bones,
+      ...(pose.rootOffset ? { rootOffset: pose.rootOffset } : {}),
     },
     null,
     2,
@@ -123,6 +131,9 @@ export function poseFromJson(text: string): Pose | null {
       tags: Array.isArray(raw.tags)
         ? raw.tags.filter((t) => typeof t === "string")
         : [],
+      ...(Array.isArray(raw.rootOffset) && raw.rootOffset.length === 3
+        ? { rootOffset: raw.rootOffset as [number, number, number] }
+        : {}),
       source: raw.source ?? "imported",
       bones,
     };

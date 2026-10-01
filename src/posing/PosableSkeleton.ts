@@ -133,7 +133,13 @@ export class PosableSkeleton {
     const bone = this.bones.get(name);
     if (!bone) return;
     this.rotations[name] = [q.x, q.y, q.z, q.w];
-    bone.quaternion.copy(q);
+    // Apply the authored rotation ON TOP OF the model's bind orientation rather
+    // than replacing it. Every model sharing the rig contract can have a
+    // different rest orientation (a T-pose FBX, a differently-posed rig), and
+    // overwriting the bind quaternion would make the same pose land differently
+    // on each one, which is exactly what pose transfer must not do.
+    const bind = this.restQuaternions.get(name) ?? new THREE.Quaternion();
+    bone.quaternion.copy(bind).multiply(q);
     this.applyDown(name);
   }
 
@@ -148,8 +154,10 @@ export class PosableSkeleton {
   }
 
   getBoneQuaternion(name: string): THREE.Quaternion | null {
-    const bone = this.bones.get(name);
-    return bone ? bone.quaternion.clone() : null;
+    // The authored rotation, not the composed world-local one: callers compare
+    // these across models, and the bind orientation is per-model.
+    const authored = this.rotations[name];
+    return authored ? new THREE.Quaternion(...authored) : null;
   }
 
   getBoneEuler(name: string): THREE.Euler | null {
@@ -188,13 +196,29 @@ export class PosableSkeleton {
    * switching poses never leaves stale rotations behind.
    * This is the pose-transfer entry point.
    */
-  applyPose(pose: PoseData): void {
+  applyPose(pose: PoseData, rootOffset?: [number, number, number]): void {
+    const bindRoot = this.rootOffset.copy(this.bones.get(HIP_BONE)?.position ?? new THREE.Vector3());
     this.resetPose();
     for (const [name, r] of Object.entries(pose)) {
       if (!this.bones.has(name)) continue;
       this.setBoneRotation(name, new THREE.Quaternion(r[0], r[1], r[2], r[3]));
     }
+
+    // The rig has no pelvis bone and Hips is the skeleton root, so rotating it
+    // spins the figure without lowering it. Seated and kneeling poses pass an
+    // explicit root offset, which is applied as a translation on the root bone
+    // and folded back into the bind offset so repeated poses do not accumulate.
+    const hips = this.bones.get(HIP_BONE);
+    if (hips) {
+      const offset = rootOffset
+        ? new THREE.Vector3(...rootOffset)
+        : new THREE.Vector3(0, 0, 0);
+      hips.position.copy(bindRoot).add(offset);
+      this.applyDown(HIP_BONE);
+    }
   }
+
+  private readonly rootOffset = new THREE.Vector3();
 
   // ------------------------------------------------------------------ IK
 

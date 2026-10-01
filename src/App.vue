@@ -66,6 +66,18 @@ const {
   stopPlayback,
   seekClip,
   stepClip,
+  propCatalog,
+  props,
+  selectedPropId,
+  propError,
+  imagePlanes,
+  addProp,
+  addPropFromFile,
+  removeProp,
+  dropPropToFloor,
+  placePropAtBone,
+  addImagePlane,
+  removeImagePlane,
 } = usePosing();
 
 onMounted(() => {
@@ -94,6 +106,30 @@ const groups = computed(() => {
   }
   return [...map.entries()];
 });
+
+const propGroups = computed(() => {
+  const map = new Map<string, CatalogEntry[]>();
+  for (const p of propCatalog) {
+    const list = map.get(p.family);
+    if (list) list.push(p);
+    else map.set(p.family, [p]);
+  }
+  return [...map.entries()];
+});
+
+function onPropFile(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (file) void addPropFromFile(file);
+  input.value = "";
+}
+
+function onImageFile(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (file) void addImagePlane(file);
+  input.value = "";
+}
 
 // Render thumbnails lazily: only the poses currently visible in the picker,
 // so opening it does not generate 98 renders up front.
@@ -479,6 +515,104 @@ watch(
             </p>
           </div>
         </template>
+      </section>
+
+      <section>
+        <h2>Props</h2>
+        <p v-if="propError" class="hint warn">{{ propError }}</p>
+
+        <div v-for="[family, items] in propGroups" :key="family" class="group">
+          <h3>{{ family }}</h3>
+          <div class="grid">
+            <button
+              v-for="p in items"
+              :key="p.id"
+              type="button"
+              class="chip"
+              @click="addProp(p)"
+            >
+              {{ p.name }}
+            </button>
+          </div>
+        </div>
+
+        <label class="file-btn">
+          Import .obj / .glb
+          <input
+            type="file"
+            accept=".obj,.glb,.gltf"
+            hidden
+            @change="onPropFile"
+          />
+        </label>
+
+        <div v-if="props.length" class="prop-list">
+          <div
+            v-for="placed in props"
+            :key="placed.id"
+            class="prop-row"
+            :class="{ on: placed.id === selectedPropId }"
+          >
+            <span
+              class="prop-name"
+              role="button"
+              tabindex="0"
+              @click="selectedPropId = placed.id"
+            >
+              {{ placed.config.name }}
+            </span>
+            <span class="prop-actions">
+              <button
+                type="button"
+                class="chip tiny"
+                title="Drop to floor"
+                @click="dropPropToFloor(placed.id)"
+              >
+                v
+              </button>
+              <button
+                type="button"
+                class="chip tiny"
+                title="Place at the figure's feet"
+                @click="placePropAtBone(placed.id, 'LeftFoot')"
+              >
+                @
+              </button>
+              <button
+                type="button"
+                class="chip tiny danger"
+                :aria-label="`Remove ${placed.config.name}`"
+                @click="removeProp(placed.id)"
+              >
+                &times;
+              </button>
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Image planes</h2>
+        <p v-if="imagePlanes.length === 0" class="hint">
+          Import an image to compose and check perspective against it.
+        </p>
+        <div class="prop-list">
+          <div v-for="plane in imagePlanes" :key="plane.id" class="prop-row">
+            <span class="prop-name">{{ plane.name }}</span>
+            <button
+              type="button"
+              class="chip tiny danger"
+              :aria-label="`Remove ${plane.name}`"
+              @click="removeImagePlane(plane.id)"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+        <label class="file-btn">
+          {{ imagePlanes.length ? "Add another" : "Add image plane" }}
+          <input type="file" accept="image/*" hidden @change="onImageFile" />
+        </label>
       </section>
 
       <section v-if="activeModelId">
@@ -933,6 +1067,69 @@ button.tag.on {
   margin-top: 4px;
   accent-color: var(--poseify-accent);
   cursor: pointer;
+}
+
+.file-btn {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 6px;
+  border: 1px dashed var(--poseify-border);
+  border-radius: 6px;
+  color: var(--poseify-text-dim);
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.file-btn:hover {
+  border-color: var(--poseify-accent);
+  color: var(--poseify-text);
+}
+
+.prop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.prop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 5px;
+  background: #232833;
+  font-size: 11px;
+}
+
+.prop-row.on {
+  border-color: var(--poseify-accent);
+  background: color-mix(in srgb, var(--poseify-accent) 22%, #232833);
+}
+
+.prop-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.prop-actions {
+  display: flex;
+  gap: 2px;
+}
+
+button.chip.tiny {
+  padding: 1px 5px;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+button.chip.tiny.danger {
+  color: #f0b4b4;
 }
 
 .error {

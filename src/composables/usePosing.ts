@@ -35,11 +35,36 @@ import {
   type AnimationClip,
   type ClipSummary,
 } from "../anim/ClipPlayer";
+import {
+  PROP_CATALOG,
+  buildProp,
+  findProp,
+} from "../props/PropCatalog";
+import {
+  centreOnOrigin,
+  loadPropFromFile,
+  measure,
+  snapToFloor,
+  type PropConfig,
+} from "../props/PropSystem";
+import { createImagePlane, updateImagePlane } from "../props/ImagePlane";
 
 export interface PosedModel {
   config: CatalogEntry;
   skeleton: PosableSkeleton;
   root: THREE.Object3D;
+}
+
+export interface PlacedProp {
+  id: string;
+  config: PropConfig;
+  root: THREE.Object3D;
+}
+
+export interface ImagePlaneEntry {
+  id: string;
+  name: string;
+  mesh: THREE.Mesh;
 }
 
 /** Decode a `data:image/png;base64,...` URL into a Blob for download. */
@@ -403,7 +428,7 @@ export function usePosing() {
       return false;
     }
 
-    active.skeleton.applyPose(pose.bones);
+    active.skeleton.applyPose(pose.bones, pose.rootOffset);
     appliedPoseId.value = pose.id;
     poseError.value = null;
     return true;
@@ -514,6 +539,154 @@ export function usePosing() {
     playing.value = clipPlayer.playing;
   }
 
+  // --------------------------------------------------------------- props
+
+  const props = ref<PlacedProp[]>([]);
+  const selectedPropId = ref<string | null>(null);
+  const propError = ref<string | null>(null);
+  const imagePlanes = ref<ImagePlaneEntry[]>([]);
+
+  /** Add a built-in prop, centred and resting on the floor. */
+  function addProp(config: PropConfig): PlacedProp | null {
+    const vp = viewport.value;
+    if (!vp) return null;
+    propError.value = null;
+
+    try {
+      const root = buildProp(config.procedural!);
+      // Offset along X so several props do not stack on one another.
+      root.position.x = props.value.length * 0.9;
+      centreOnOrigin(root);
+      vp.scene.add(root);
+
+      const placed: PlacedProp = {
+        id: `${config.id}_${props.value.length}`,
+        config,
+        root,
+      };
+      props.value = [...props.value, placed];
+      selectedPropId.value = placed.id;
+      return placed;
+    } catch (err) {
+      propError.value = err instanceof Error ? err.message : String(err);
+      return null;
+    }
+  }
+
+  /** Add a prop from a user-supplied OBJ or GLB file. */
+  async function addPropFromFile(file: File): Promise<void> {
+    const vp = viewport.value;
+    if (!vp) return;
+    propError.value = null;
+    try {
+      const root = await loadPropFromFile(file);
+      root.position.x = props.value.length * 0.9;
+      centreOnOrigin(root);
+      vp.scene.add(root);
+
+      const placed: PlacedProp = {
+        id: `imported_${props.value.length}`,
+        config: {
+          id: file.name,
+          name: file.name,
+          family: "imported",
+          tags: ["imported"],
+          size: [1, 1, 1],
+        },
+        root,
+      };
+      props.value = [...props.value, placed];
+      selectedPropId.value = placed.id;
+    } catch (err) {
+      propError.value = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  function removeProp(id: string): void {
+    const vp = viewport.value;
+    const placed = props.value.find((p) => p.id === id);
+    if (!placed || !vp) return;
+    vp.scene.remove(placed.root);
+    props.value = props.value.filter((p) => p.id !== id);
+    if (selectedPropId.value === id) selectedPropId.value = null;
+  }
+
+  /** Re-drop a prop onto the floor after it has been moved. */
+  function dropPropToFloor(id: string): void {
+    const placed = props.value.find((p) => p.id === id);
+    if (placed) snapToFloor(placed.root);
+  }
+
+  /**
+   * Place a prop at a figure contact point, snapped to the floor. This is what
+   * makes "sitting on the chair" work without hand placement.
+   */
+  function placePropAtBone(
+    propId: string,
+    boneName: string,
+    offset = 0.6,
+  ): boolean {
+    const placed = props.value.find((p) => p.id === propId);
+    const active = models.value.find((m) => m.config.id === activeModelId.value);
+    if (!placed || !active) return false;
+
+    const anchor = active.skeleton.getWorldPosition(boneName, new THREE.Vector3());
+    if (!anchor) {
+      propError.value = `Unknown joint: ${boneName}`;
+      return false;
+    }
+
+    placed.root.position.set(anchor.x + offset, 0, anchor.z);
+    // Face across the figure rather than away from it.
+    placed.root.rotation.y = Math.PI / 2;
+    placed.root.updateMatrixWorld(true);
+    snapToFloor(placed.root);
+    return true;
+  }
+
+  /** Import an image as a 3D plane for composition and perspective checks. */
+  async function addImagePlane(file: File, widthMetres = 2): Promise<void> {
+    const vp = viewport.value;
+    if (!vp) return;
+    propError.value = null;
+    const url = URL.createObjectURL(file);
+    try {
+      const result = await createImagePlane(url, { width: widthMetres });
+      result.mesh.position.set(0, 1.2, -1.5);
+      result.mesh.name = `ImagePlane_${imagePlanes.value.length}`;
+      vp.scene.add(result.mesh);
+      imagePlanes.value = [
+        ...imagePlanes.value,
+        { id: result.mesh.name, name: file.name, mesh: result.mesh },
+      ];
+    } catch (err) {
+      propError.value = err instanceof Error ? err.message : String(err);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function removeImagePlane(id: string): void {
+    const vp = viewport.value;
+    const plane = imagePlanes.value.find((p) => p.id === id);
+    if (!plane || !vp) return;
+    vp.scene.remove(plane.mesh);
+    (plane.mesh.material as THREE.Material).dispose();
+    (plane.mesh.geometry as THREE.BufferGeometry).dispose();
+    imagePlanes.value = imagePlanes.value.filter((p) => p.id !== id);
+  }
+
+  function setImagePlaneOpacity(id: string, opacity: number): void {
+    const plane = imagePlanes.value.find((p) => p.id === id);
+    if (plane) updateImagePlane(plane.mesh, { opacity });
+  }
+
+  /** Bounds of a placed prop, for framing and clearance. */
+  function propBounds(id: string): THREE.Box3 | null {
+    const placed = props.value.find((p) => p.id === id);
+    return placed ? measure(placed.root) : null;
+  }
+
   onBeforeUnmount(dispose);
 
   return {
@@ -582,5 +755,20 @@ export function usePosing() {
     stopPlayback,
     seekClip,
     stepClip,
+    propCatalog: PROP_CATALOG,
+    findProp,
+    props,
+    selectedPropId,
+    propError,
+    imagePlanes,
+    addProp,
+    addPropFromFile,
+    removeProp,
+    dropPropToFloor,
+    placePropAtBone,
+    addImagePlane,
+    removeImagePlane,
+    setImagePlaneOpacity,
+    propBounds,
   };
 }
