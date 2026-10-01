@@ -770,6 +770,236 @@ watch(
             </button>
           </div>
         </div>
+
+        <!-- Props -->
+        <div v-else-if="activeOverlay === 'props'" class="overlay-pane">
+          <p v-if="propError" class="hint warn">{{ propError }}</p>
+
+          <div v-for="[family, items] in propGroups" :key="family" class="group">
+            <h3>{{ family }}</h3>
+            <div class="chip-grid">
+              <button
+                v-for="p in items"
+                :key="p.id"
+                type="button"
+                class="chip"
+                @click="addProp(p)"
+              >
+                {{ p.name }}
+              </button>
+            </div>
+          </div>
+
+          <label class="file-btn">
+            Import .obj / .glb
+            <input
+              type="file"
+              accept=".obj,.glb,.gltf"
+              hidden
+              @change="onPropFile"
+            />
+          </label>
+
+          <div v-if="props.length" class="prop-list">
+            <div
+              v-for="placed in props"
+              :key="placed.id"
+              class="prop-row"
+              :class="{ on: placed.id === selectedPropId }"
+            >
+              <span
+                class="prop-name"
+                role="button"
+                tabindex="0"
+                @click="selectedPropId = placed.id"
+              >
+                {{ placed.config.name }}
+              </span>
+              <span class="prop-actions">
+                <button
+                  type="button"
+                  class="chip tiny"
+                  title="Drop to floor"
+                  @click="dropPropToFloor(placed.id)"
+                >
+                  v
+                </button>
+                <button
+                  type="button"
+                  class="chip tiny"
+                  title="Place at the figure's feet"
+                  @click="placePropAtBone(placed.id, 'LeftFoot')"
+                >
+                  @
+                </button>
+                <button
+                  type="button"
+                  class="chip tiny danger"
+                  :aria-label="`Remove ${placed.config.name}`"
+                  @click="removeProp(placed.id)"
+                >
+                  &times;
+                </button>
+              </span>
+            </div>
+          </div>
+
+          <h3 class="sub">Image planes</h3>
+          <p v-if="imagePlanes.length === 0" class="hint">
+            Import an image to compose and check perspective against it.
+          </p>
+          <div v-else class="prop-list">
+            <div
+              v-for="plane in imagePlanes"
+              :key="plane.id"
+              class="prop-row"
+            >
+              <span class="prop-name">{{ plane.name }}</span>
+              <span class="prop-actions">
+                <button
+                  type="button"
+                  class="chip tiny danger"
+                  :aria-label="`Remove ${plane.name}`"
+                  @click="removeImagePlane(plane.id)"
+                >
+                  &times;
+                </button>
+              </span>
+            </div>
+          </div>
+          <label class="file-btn">
+            Import an image
+            <input type="file" accept="image/*" hidden @change="onImageFile" />
+          </label>
+        </div>
+
+        <!-- Scenes and save/load -->
+        <div v-else-if="activeOverlay === 'scenes'" class="overlay-pane">
+          <p v-if="sceneError" class="hint warn">{{ sceneError }}</p>
+
+          <label class="field">
+            <span>Scene name</span>
+            <input v-model="sceneName" type="text" />
+          </label>
+          <div class="row wrap">
+            <button type="button" class="chip" @click="saveCurrentScene()">
+              Save
+            </button>
+            <button type="button" class="chip" @click="exportCurrentScene()">
+              Export file
+            </button>
+            <button type="button" class="chip" @click="undo()" :disabled="!canUndo">
+              Undo
+            </button>
+            <button type="button" class="chip" @click="redo()" :disabled="!canRedo">
+              Redo
+            </button>
+          </div>
+
+          <template v-if="savedScenes.length">
+            <h3 class="sub">Saved</h3>
+            <div class="scene-list">
+              <div
+                v-for="s in savedScenes"
+                :key="s.name"
+                class="scene-row saved"
+              >
+                <span class="scene-name" @click="openSavedScene(s.name)">
+                  {{ s.name }}
+                </span>
+                <button
+                  type="button"
+                  class="chip tiny danger"
+                  :aria-label="`Delete ${s.name}`"
+                  @click="deleteSavedScene(s.name)"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <h3 class="sub">Premade</h3>
+          <div class="scene-list">
+            <button
+              v-for="s in premadeScenes"
+              :key="s.name"
+              type="button"
+              class="scene-row"
+              :title="s.description"
+              @click="loadPremadeScene(s.name)"
+            >
+              {{ s.name }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Export. PoseMy.Art offers one button per pass rather than a single
+             "export all", because an artist usually wants the regular image
+             and only occasionally the depth or normal map. -->
+        <div v-else-if="activeOverlay === 'export'" class="overlay-pane">
+          <label class="field">
+            <span>Resolution <b>{{ exportSize }}&times;{{ exportSize }}</b></span>
+            <input
+              type="range"
+              min="512"
+              max="2048"
+              step="256"
+              :value="exportSize"
+              @input="exportSize = Number(($event.target as HTMLInputElement).value)"
+            />
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
+              :checked="exportTransparent"
+              @change="exportTransparent = ($event.target as HTMLInputElement).checked"
+            />
+            <span>Transparent background</span>
+          </label>
+
+          <h3 class="sub">Passes</h3>
+          <div class="chip-grid">
+            <button
+              v-for="pass in RENDER_PASSES"
+              :key="pass"
+              type="button"
+              class="chip"
+              :disabled="exporting || !activeModelId"
+              @click="runExport()"
+            >
+              Export {{ pass }}
+            </button>
+          </div>
+
+          <div class="row wrap">
+            <button
+              type="button"
+              class="chip"
+              :disabled="exporting || !activeModelId"
+              @click="runExport()"
+            >
+              {{ exporting ? "Rendering..." : `Export all ${RENDER_PASSES.length}` }}
+            </button>
+            <button
+              type="button"
+              class="chip"
+              :disabled="!activeModelId"
+              @click="
+                (() => {
+                  const obj = exportObjNow();
+                  if (obj) download(obj.filename, obj.text);
+                })()
+              "
+            >
+              Export OBJ
+            </button>
+          </div>
+          <p class="hint">
+            {{ RENDER_PASSES.length }} passes: regular, OpenPose, depth, canny,
+            normals.
+          </p>
+        </div>
       </div>
     </section>
 
@@ -2582,6 +2812,35 @@ button.chip.tile.loading {
   gap: 8px;
   max-height: none;
   overflow-y: visible;
+  margin-top: 0;
+}
+
+/* Prop and export-pass buttons flow rather than sitting in the old 2-column
+ * grid, so an overlay of any width lays them out sensibly. */
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip-grid .chip {
+  padding: 7px 12px;
+  text-align: center;
+}
+
+.overlay-pane .scene-list {
+  max-height: 260px;
+}
+
+/* Overlay headings sit closer together than the old panel ones: the overlay
+ * scrolls, so the spacing is spent on content rather than on air. */
+.overlay-pane h3,
+.overlay-pane .sub {
+  margin: 6px 0 4px;
+  font-size: 13px;
+}
+
+.overlay-pane > .group:first-child h3 {
   margin-top: 0;
 }
 
