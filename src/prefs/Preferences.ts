@@ -21,6 +21,13 @@ export interface Prefs {
    * user-editable and outlives any single app version.
    */
   cameraPresets: CameraPose[];
+  /**
+   * User-defined joint groups and anchors. Validated on read for the same
+   * reason as cameraPresets: localStorage is user-editable and outlives any
+   * single app version.
+   */
+  jointGroups: unknown;
+  anchors: unknown;
 }
 
 const DEFAULTS: Prefs = {
@@ -31,6 +38,8 @@ const DEFAULTS: Prefs = {
   autoKeyframes: false,
   onboardingDone: false,
   cameraPresets: [],
+  jointGroups: [],
+  anchors: [],
 };
 
 function read(): Prefs {
@@ -46,6 +55,10 @@ function read(): Prefs {
         ? parsed.favorites.filter((id): id is string => typeof id === "string")
         : [],
       cameraPresets: validateCameraPoses(parsed.cameraPresets),
+      // Validated by the owning modules, which know the bone and anchor
+      // contracts; storing them raw here keeps Preferences free of rig imports.
+      jointGroups: parsed.jointGroups,
+      anchors: parsed.anchors,
     };
   } catch {
     return { ...DEFAULTS };
@@ -91,5 +104,6 @@ export function usePreferences() {
 
   return { prefs, isFavorite, toggleFavorite, set, completeOnboarding, restartOnboarding };
 }
+
 
 

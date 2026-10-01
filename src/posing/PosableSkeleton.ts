@@ -10,6 +10,7 @@ import {
   type BodyBoneName,
 } from "../rig/RigContract";
 import { retargetSkeleton, type RetargetResult } from "../rig/Retargeter";
+import { orderAnchors, resolveAnchorTarget, type Anchor } from "./Anchors";
 import { gizmoSizeFor, type ModelLoadConfig } from "../models/ModelLoadConfig";
 
 export type BoneRotation = [number, number, number, number];
@@ -274,6 +275,74 @@ export class PosableSkeleton {
       if (HAND_BONES.includes(name)) this.resetBone(name);
     }
   }
+  /**
+   * Per-frame anchor constraint pass.
+   *
+   * Runs *after* IK and *before* the caller applies the skeleton, so an anchored
+   * hand wins over an IK solution that is being dragged, and the resulting bone
+   * transform is what reaches the mesh. Anchors are applied in dependency order
+   * (see orderAnchors) so a chain resolves in one sweep rather than needing one
+   * pass per link.
+   *
+   * Anchors whose bone or target is absent from the scene are skipped and
+   * counted, so a deleted prop drops the anchor instead of snapping the bone to
+   * the world origin.
+   */
+  applyAnchors(
+    anchors: readonly Anchor[],
+    props: ReadonlyMap<string, THREE.Object3D>,
+  ): { applied: number; skipped: number } {
+    if (anchors.length === 0) return { applied: 0, skipped: 0 };
+    this.root.updateMatrixWorld(true);
+
+    const targetPos = new THREE.Vector3();
+    const parentWorld = new THREE.Matrix4();
+    const local = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+
+    let applied = 0;
+    let skipped = 0;
+
+    for (const anchor of orderAnchors(anchors)) {
+      const bone = this.bones.get(anchor.bone);
+      if (!bone) {
+        skipped += 1;
+        continue;
+      }
+      const world = resolveAnchorTarget(anchor, this.bones, props, targetPos);
+      if (!world) {
+        skipped += 1;
+        continue;
+      }
+
+      // Convert the target's world point into the bone's parent space, then
+      // write it back as a local position. Rotating the bone is left alone:
+      // an anchor pins *where* a joint is, not which way it faces, and forcing
+      // an orientation would fight the body pose.
+      if (bone.parent) {
+        bone.parent.updateWorldMatrix(true, false);
+        parentWorld.copy(bone.parent.matrixWorld).invert();
+        local.makeTranslation(world.x, world.y, world.z);
+        local.premultiply(parentWorld);
+        local.decompose(position, quaternion, scale);
+        bone.position.copy(position);
+      } else {
+        bone.position.copy(world);
+      }
+      bone.updateMatrixWorld(true);
+      applied += 1;
+    }
+
+    // Children inherit the corrected transform, so the whole chain below the
+    // anchor follows without each bone needing its own anchor.
+    for (const anchor of orderAnchors(anchors)) {
+      const bone = this.bones.get(anchor.bone);
+      if (bone) this.applyDown(anchor.bone);
+    }
+    return { applied, skipped };
+  }
   private readonly rootOffset = new THREE.Vector3();
 
   // ------------------------------------------------------------------ IK
@@ -438,4 +507,5 @@ function findSkinnedMesh(root: THREE.Object3D): THREE.SkinnedMesh | null {
   });
   return found;
 }
+
 

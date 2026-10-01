@@ -44,6 +44,22 @@ const {
   inPlace,
   applyRandomPose,
   clipboardStatus,
+  jointGroups,
+  anchors,
+  groupableBones,
+  groupDraftName,
+  groupDraftBones,
+  groupStatus,
+  createGroup,
+  deleteGroup,
+  resetGroup,
+  rotateGroup,
+  anchorDraftBone,
+  anchorDraftTarget,
+  anchorDraftOffset,
+  anchorError,
+  createAnchor,
+  deleteAnchor,
   handSide,
   handPoseError,
   setHandSide,
@@ -894,6 +910,146 @@ watch(
       </section>
 
       <section v-if="activeModelId">
+        <h2>Joint groups</h2>
+        <p class="hint">
+          Group a chain so it can be posed or reset as a unit.
+        </p>
+        <div class="row preset-row">
+          <input
+            v-model="groupDraftName"
+            type="text"
+            placeholder="Group name"
+            aria-label="Group name"
+          />
+          <button
+            type="button"
+            class="chip"
+            :disabled="!groupDraftName.trim() || groupDraftBones.length === 0"
+            @click="createGroup()"
+          >
+            Add
+          </button>
+        </div>
+        <div class="tags bone-tags">
+          <button
+            v-for="bone in groupableBones"
+            :key="bone"
+            type="button"
+            class="tag"
+            :class="{ on: groupDraftBones.includes(bone) }"
+            @click="
+              groupDraftBones = groupDraftBones.includes(bone)
+                ? groupDraftBones.filter((b) => b !== bone)
+                : [...groupDraftBones, bone]
+            "
+          >
+            {{ bone }}
+          </button>
+        </div>
+        <ul v-if="jointGroups.length" class="list">
+          <li v-for="group in jointGroups" :key="group.id">
+            <button type="button" @click="resetGroup(group.id)">
+              {{ group.name }}
+              <small>({{ group.bones.length }})</small>
+            </button>
+            <button
+              type="button"
+              class="danger"
+              :aria-label="`Delete group ${group.name}`"
+              @click="deleteGroup(group.id)"
+            >
+              &times;
+            </button>
+          </li>
+        </ul>
+        <p v-else class="hint">No groups yet.</p>
+        <p v-if="groupStatus" class="hint">{{ groupStatus }}</p>
+      </section>
+
+      <section v-if="activeModelId">
+        <h2>Anchors</h2>
+        <p class="hint">
+          Pin a joint to another joint or a prop. Cycles are refused.
+        </p>
+        <label class="field">
+          <span>Joint</span>
+          <select v-model="anchorDraftBone">
+            <option :value="null">Pick a joint</option>
+            <option v-for="bone in groupableBones" :key="bone" :value="bone">
+              {{ bone }}
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Pin to</span>
+          <select v-model="anchorDraftTarget">
+            <option :value="null">Pick a target</option>
+            <optgroup label="Joints">
+              <option
+                v-for="bone in groupableBones"
+                :key="bone"
+                :value="{ kind: 'bone', name: bone }"
+              >
+                {{ bone }}
+              </option>
+            </optgroup>
+            <optgroup v-if="props.length" label="Props">
+              <option
+                v-for="prop in props"
+                :key="prop.id"
+                :value="{ kind: 'prop', id: prop.id }"
+              >
+                {{ prop.config.name }}
+              </option>
+            </optgroup>
+          </select>
+        </label>
+        <div class="row wrap">
+          <label class="field inline-field">
+            <span>Offset X</span>
+            <input v-model.number="anchorDraftOffset[0]" type="number" step="0.05" />
+          </label>
+          <label class="field inline-field">
+            <span>Offset Y</span>
+            <input v-model.number="anchorDraftOffset[1]" type="number" step="0.05" />
+          </label>
+          <label class="field inline-field">
+            <span>Offset Z</span>
+            <input v-model.number="anchorDraftOffset[2]" type="number" step="0.05" />
+          </label>
+        </div>
+        <button
+          type="button"
+          class="chip wide"
+          :disabled="!anchorDraftBone || !anchorDraftTarget"
+          @click="createAnchor()"
+        >
+          Add anchor
+        </button>
+        <p v-if="anchorError" class="hint warn">{{ anchorError }}</p>
+        <ul v-if="anchors.length" class="list">
+          <li v-for="anchor in anchors" :key="anchor.id">
+            <button type="button" disabled>
+              {{ anchor.bone }} &rarr;
+              {{ anchor.target.kind === "bone"
+                ? anchor.target.name
+                : (props.find((p) => p.id === anchor.target.id)?.config.name
+                  ?? anchor.target.id) }}
+            </button>
+            <button
+              type="button"
+              class="danger"
+              :aria-label="`Remove anchor on ${anchor.bone}`"
+              @click="deleteAnchor(anchor.id)"
+            >
+              &times;
+            </button>
+          </li>
+        </ul>
+        <p v-else class="hint">No anchors yet.</p>
+      </section>
+
+      <section v-if="activeModelId">
         <h2>Hand poses</h2>
         <p class="hint">
           Hands transfer independently of the body, so a finished pose keeps its
@@ -1472,6 +1628,26 @@ button.chip.wide {
   flex: 1 1 auto;
   min-width: 0;
   padding: 4px 6px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 6px;
+  background: #1b1f27;
+  color: var(--poseify-text);
+  font-size: 11px;
+}
+
+.bone-tags {
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.inline-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.inline-field input {
+  width: 100%;
+  padding: 3px 5px;
   border: 1px solid var(--poseify-border);
   border-radius: 6px;
   background: #1b1f27;
@@ -2123,6 +2299,7 @@ button.chip:disabled {
   background: #6fb4ff;
 }
 </style>
+
 
 
 

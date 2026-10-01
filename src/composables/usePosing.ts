@@ -1,6 +1,6 @@
 // Bridges the framework-free 3D systems into Vue reactive state.
 
-import { computed, onBeforeUnmount, ref, shallowRef } from "vue";
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import * as THREE from "three";
 import { Viewport } from "../renderer/Viewport";
 import { PoseController, type InteractionMode } from "../posing/PoseController";
@@ -16,6 +16,23 @@ import { modelThumbnail } from "../models/ModelThumbnail";
 import { usePreferences } from "../prefs/Preferences";
 import { removePreset, upsertPreset } from "../prefs/CameraPresets";
 import type { CameraPose } from "../prefs/CameraTypes";
+import {
+  groupIdFromName,
+  removeGroup,
+  resolveGroupBones,
+  resetGroupBones,
+  selectableBones,
+  upsertGroup,
+  validateGroups,
+  type JointGroup,
+} from "../posing/JointGroups";
+import {
+  removeAnchor,
+  upsertAnchor,
+  validateAnchor,
+  validateAnchors,
+  type Anchor,
+} from "../posing/Anchors";
 import { resolveShortcut, type ShortcutAction } from "../prefs/Shortcuts";
 import type { GridState, LightState } from "../scene/SceneEnvironment";
 import {
@@ -402,6 +419,156 @@ export function usePosing() {
     handPoseStatus.value = "Hands reset";
     commit();
   }
+  // ------------------------------------ Phase 6: joint groups and anchors
+
+  // Loaded from preferences once, then owned here so the editor can work on
+  // drafts without a round-trip through storage on every keystroke.
+  const jointGroups = ref<JointGroup[]>(
+    validateGroups(usePreferences().prefs.value.jointGroups),
+  );
+  const anchors = ref<Anchor[]>(
+    validateAnchors(usePreferences().prefs.value.anchors),
+  );
+  const groupDraftName = ref("");
+  const groupDraftBones = ref<string[]>([]);
+  const anchorDraftBone = ref<string | null>(null);
+  const anchorDraftTarget = ref<Anchor["target"] | null>(null);
+  const anchorDraftOffset = ref<[number, number, number]>([0, 0, 0]);
+  const anchorError = ref<string | null>(null);
+
+  /** Bones this model has, for the group editor and anchor pickers. */
+  const groupableBones = computed<string[]>(() => {
+    const skeleton = activeSkeleton();
+    return skeleton ? selectableBones(new Set(skeleton.getBoneNames())) : [];
+  });
+
+  /**
+   * Create a group from the current draft.
+   *
+   * Refuses an empty group rather than storing it, because a group with no
+   * bones is a dead row in the picker.
+   */
+  function createGroup(): boolean {
+    const name = groupDraftName.value.trim();
+    const bones = [...groupDraftBones.value];
+    if (!name || bones.length === 0) {
+      return false;
+    }
+    jointGroups.value = upsertGroup(jointGroups.value, {
+      id: groupIdFromName(name),
+      name,
+      bones,
+    });
+    groupDraftName.value = "";
+    groupDraftBones.value = [];
+    return true;
+  }
+
+  function deleteGroup(id: string): void {
+    jointGroups.value = removeGroup(jointGroups.value, id);
+  }
+
+  /**
+   * Reset every bone in a group to bind, leaving the rest of the pose alone.
+   *
+   * Applies through resetBone per bone rather than re-applying a filtered pose,
+   * so bones that are not on this model are reported instead of silently kept.
+   */
+  function resetGroup(id: string): void {
+    const skeleton = activeSkeleton();
+    const group = jointGroups.value.find((g) => g.id === id);
+    if (!skeleton || !group) return;
+    const known = new Set(skeleton.getBoneNames());
+    const { bones, missing } = resolveGroupBones(group, known);
+    for (const bone of bones) skeleton.resetBone(bone);
+    anchorError.value = null;
+    groupStatus.value =
+      missing.length > 0
+        ? `Reset ${bones.length} bone(s); ${missing.length} not on this model`
+        : `Reset ${bones.length} bone(s) in ${group.name}`;
+    commit();
+  }
+
+  /** Rotate every bone in a group by the same Euler, for posing a chain as a unit. */
+  function rotateGroup(id: string, degrees: [number, number, number]): void {
+    const skeleton = activeSkeleton();
+    const group = jointGroups.value.find((g) => g.id === id);
+    if (!skeleton || !group) return;
+    const known = new Set(skeleton.getBoneNames());
+    const { bones } = resolveGroupBones(group, known);
+    const euler = new THREE.Euler(
+      (degrees[0] * Math.PI) / 180,
+      (degrees[1] * Math.PI) / 180,
+      (degrees[2] * Math.PI) / 180,
+      "XYZ",
+    );
+    for (const bone of bones) skeleton.rotateBone(bone, euler);
+    anchorError.value = null;
+    groupStatus.value = `Rotated ${bones.length} bone(s) in ${group.name}`;
+    commit();
+  }
+
+  const groupStatus = ref<string | null>(null);
+
+  // Mirror groups and anchors into preferences so they survive a reload.
+  // Written through the same setter as every other preference rather than to
+  // localStorage directly, so there is one persistence path.
+  watch(jointGroups, (value) => {
+    usePreferences().set("jointGroups", value);
+  }, { deep: true });
+  watch(anchors, (value) => {
+    usePreferences().set("anchors", value);
+  }, { deep: true });
+
+  /**
+   * Create an anchor from the current draft.
+   *
+   * Cycles are rejected here, at creation, rather than discovered in the
+   * per-frame pass where there is no safe way to recover.
+   */
+  function createAnchor(): boolean {
+    const bone = anchorDraftBone.value;
+    const target = anchorDraftTarget.value;
+    if (!bone || !target) return false;
+    const candidate: Anchor = {
+      id: `anchor_${bone}`,
+      bone,
+      target,
+      offset: [...anchorDraftOffset.value],
+    };
+    const check = validateAnchor(candidate, anchors.value);
+    if (!check.ok) {
+      anchorError.value = check.reason;
+      return false;
+    }
+    anchors.value = upsertAnchor(anchors.value, candidate);
+    anchorError.value = null;
+    groupStatus.value = `Anchored ${bone}`;
+    anchorDraftBone.value = null;
+    anchorDraftTarget.value = null;
+    anchorDraftOffset.value = [0, 0, 0];
+    return true;
+  }
+
+  function deleteAnchor(id: string): void {
+    // Removing an anchor must not move the bone: it stays exactly where the
+    // last pass left it rather than snapping back to bind.
+    anchors.value = removeAnchor(anchors.value, id);
+    anchorError.value = null;
+  }
+
+  /**
+   * Run the anchor constraint pass for this frame.
+   *
+   * Called from the render loop after IK and before the skeleton is applied,
+   * which is what lets an anchor win over an IK solve being dragged.
+   */
+  function updateAnchors(): void {
+    const skeleton = activeSkeleton();
+    if (!skeleton || anchors.value.length === 0) return;
+    const props = new Map(props.value.map((p) => [p.id, p.root]));
+    skeleton.applyAnchors(anchors.value, props);
+  }
   const clipboard = new PoseClipboard();
   const clipboardStatus = ref<string | null>(null);
 
@@ -721,6 +888,9 @@ export function usePosing() {
     // every frame of the drag, so we wait until dragging stops and commit once.
     vp.onFrame = (delta) => {
       updateClip(delta);
+      // Anchors run after IK and before the frame is presented, so an anchored
+      // joint wins over a solution being dragged.
+      updateAnchors();
       if (gizmoDirty.value && !objectController.value?.dragging) {
         gizmoDirty.value = false;
         commit();
@@ -1811,6 +1981,22 @@ export function usePosing() {
     inPlace,
     applyRandomPose,
     clipboardStatus,
+    jointGroups,
+    anchors,
+    groupableBones,
+    groupDraftName,
+    groupDraftBones,
+    groupStatus,
+    createGroup,
+    deleteGroup,
+    resetGroup,
+    rotateGroup,
+    anchorDraftBone,
+    anchorDraftTarget,
+    anchorDraftOffset,
+    anchorError,
+    createAnchor,
+    deleteAnchor,
     handSide,
     setHandSide,
     handPoseError,
@@ -1917,6 +2103,9 @@ export function usePosing() {
     replayTour,
   };
 }
+
+
+
 
 
 
