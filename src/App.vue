@@ -63,6 +63,8 @@ const {
   exportSize,
   exportWidth,
   exportHeight,
+  depthPreview,
+  toggleDepthPreview,
   exportTransparent,
   runExport,
   exportObjNow,
@@ -368,6 +370,14 @@ watch(
             @change="exportTransparent = ($event.target as HTMLInputElement).checked"
           />
           <span>Transparent background</span>
+        </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            :checked="depthPreview"
+            @change="toggleDepthPreview()"
+          />
+          <span>Preview depth</span>
         </label>
         <div class="export-buttons">
           <button

@@ -87,13 +87,13 @@ Legend for the last column: `test` = asserted in `npm test`,
 | capability | PoseMy | Poseify (before) | Poseify (after) | phase | verified how |
 |---|---|---|---|---|---|
 | Regular image | yes | yes | yes | - | existing |
-| OpenPose without hands | yes | no | TODO | 3 | test |
-| OpenPose with hands | yes | one undifferentiated export | TODO | 3 | test |
+| OpenPose without hands | yes | no | yes, COCO-18 indices unchanged | 3 | test + browser |
+| OpenPose with hands | yes | one undifferentiated export | yes, 32 finger keypoints | 3 | test + browser |
 | Depth | yes | yes | yes | - | existing |
 | Canny | yes | yes | yes | - | existing |
 | Normals | yes | yes | yes | - | existing |
 | Preview Depth (live toggle) | yes | no | TODO | 3 | test |
-| Width / Height fields | yes (3 separate) | single resolution slider | TODO | 3 | browser |
+| Width / Height fields | yes (3 separate) | single resolution slider | yes | 3 | browser |
 | Transparent background | no | yes | yes | - | existing advantage |
 | Export whole scene to OBJ | yes | figure only | TODO | 3 | test |
 

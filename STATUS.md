@@ -28,7 +28,8 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | P0 — parity table | **PASS** | `research/PARITY.md` written; one row per GAP-ANALYSIS §2 capability across all nine subsections, each `Poseify (after)` cell a real value or explicit `TODO`, plus recorded scope decisions for animations, language and model count |
 | P1 — object transform + object ops | **PARTIAL** | see below |
 | P2 — pose surgery | **PARTIAL** | logic complete and tested; UI wired; browser check outstanding (see note) |
-| P3–P8 | **TODO** | not started |
+| P3 — export completeness | **PARTIAL** | OpenPose with/without hands + separate W/H done and browser-verified; Preview Depth and scene OBJ outstanding |
+| P4–P8 | **TODO** | not started |
 
 ### Phase 1 detail
 
@@ -98,6 +99,52 @@ browser timed out (`Page.getFrameTree`, `Runtime.evaluate`,
 "operation exceeded its deadline"). The same browser session earlier in the
 run completed the same flows, so this is host contention rather than an app
 fault. It should be re-run once the machine is quiet.
+
+### Phase 3 detail (in progress)
+
+Done and verified:
+
+- **OpenPose with hands and without hands.** 32 finger keypoints appended after
+  the 18 body joints in BODY_25 order, so every existing COCO-18 index is
+  untouched. `HAND_LIMBS` links each finger root back to its COCO-18 wrist, so
+  the with-hands figure is connected rather than a body plus two floating
+  clusters. New `openpose-hands` pass, plus per-pass export buttons so either
+  variant is individually reachable.
+- **Width and height fields** replace the single resolution slider; a
+  reference image is often not square.
+
+Two real defects were found by exporting in a browser and looking at the
+pixels. Neither was visible from the tests, and both are the "looks fine, is
+wrong" failure mode this file's discipline exists to catch:
+
+1. **Finger bones were never bound.** Every model loaded with
+   `requireHands: false`, which resolves only the 22 core bones, so all 32
+   hand keypoints silently fell back to the wrist position. The with-hands
+   image was *pixel-identical* to the body-only one while still differing in
+   payload. The retargeter now takes `bindFingers`, which seeks the 40 finger
+   bones without requiring them, so the horse and the mermaids still load while
+   every humanoid binds its own fingers.
+2. **The hand keypoint names did not match the contract.** `HAND_KEYPOINTS`
+   named bones `LeftIndex1`; the contract calls them `LeftHandIndex1`, so every
+   lookup missed. Related: the retargeter's `depthOf` walked `RIG_PARENTS`,
+   which stops at the wrist, so finger bones sorted as depth 0 and had no
+   resolved parent to hang under.
+
+| Check | Result |
+|---|---|
+| `npm test` | **328 passed / 328** (was 315) |
+| `npm run typecheck` | clean |
+| Browser: all six passes export at 2048x2048 with distinct payloads | **PASS** |
+| Browser: `openpose-hands` differs from `openpose` in bytes | **PASS** (186,166 vs 174,986) |
+| Browser: `openpose-hands` differs in pixel content | **PASS** — finger chains render past both wrists in yellow; the body-only image has bare wrists |
+| Test: with-hands has strictly more keypoints, body prefix identical to 1e-12 | **PASS** |
+| Test: every `HAND_LIMBS` index is in range and non-degenerate | **PASS** |
+| Test: each hand anchors to its COCO-18 wrist | **PASS** |
+| Test: body-only model degrades to wrist, not image origin | **PASS** |
+| Browser: Preview Depth toggle, scene OBJ | **TODO** |
+
+Outstanding for Phase 3: **Preview Depth** live toggle, and **Export Scene to
+OBJ** walking models *and* props rather than only the posed figure.
 
 ### Phase 2 detail
 

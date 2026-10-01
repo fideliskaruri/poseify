@@ -568,6 +568,18 @@ export function usePosing() {
   // come up, and a single slider could not express either.
   const exportWidth = ref(2048);
   const exportHeight = ref(2048);
+  // Live depth preview: iterate on a composition's depth without exporting.
+  const depthPreview = ref(false);
+
+  function setDepthPreview(on: boolean): void {
+    const vp = viewport.value;
+    if (!vp) return;
+    depthPreview.value = vp.setDepthPreview(on);
+  }
+
+  function toggleDepthPreview(): void {
+    setDepthPreview(!depthPreview.value);
+  }
   const exportTransparent = ref(false);
 
   /**
@@ -1575,6 +1587,9 @@ export function usePosing() {
     exportSize,
     exportWidth,
     exportHeight,
+    depthPreview,
+    setDepthPreview,
+    toggleDepthPreview,
     exportTransparent,
     runExport,
     exportObjNow,

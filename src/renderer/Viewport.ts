@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { SceneEnvironment } from "../scene/SceneEnvironment";
+import { DepthPreview } from "./DepthPreview";
 
 // Owns the WebGL renderer, scene, camera and orbit controls.
 // Kept framework-free so later milestone systems attach without a Vue dependency.
@@ -14,6 +15,7 @@ export class Viewport {
   private readonly container: HTMLElement;
   private readonly resizeObserver: ResizeObserver;
   private frameHandle = 0;
+  private readonly depthPreview: DepthPreview;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -48,6 +50,7 @@ export class Viewport {
 
     this.environment = new SceneEnvironment(this.camera);
     this.environment.attach(this.scene);
+    this.depthPreview = new DepthPreview(this.scene, this.camera);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
@@ -85,12 +88,29 @@ export class Viewport {
   /** Called every rendered frame with the elapsed seconds. */
   onFrame: ((deltaSeconds: number) => void) | null = null;
 
+  /** True while the viewport is showing the depth override. */
+  get previewingDepth(): boolean {
+    return this.depthPreview.active;
+  }
+
+  /**
+   * Turn the live depth preview on or off.
+   *
+   * Uses the same shader the depth export pass uses, so what the artist
+   * previews is exactly what gets exported. Returns the new state.
+   */
+  setDepthPreview(on: boolean): boolean {
+    return this.depthPreview.set(on);
+  }
+
   stop(): void {
     cancelAnimationFrame(this.frameHandle);
   }
 
   dispose(): void {
     this.stop();
+    // A preview left on at teardown would leak its material.
+    this.depthPreview.dispose();
     this.resizeObserver.disconnect();
     this.environment.dispose();
     this.controls.dispose();
