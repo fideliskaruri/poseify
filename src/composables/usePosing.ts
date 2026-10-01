@@ -13,6 +13,8 @@ import {
   type CatalogEntry,
 } from "../models/ModelCatalog";
 import { modelThumbnail } from "../models/ModelThumbnail";
+import { usePreferences } from "../prefs/Preferences";
+import { resolveShortcut, type ShortcutAction } from "../prefs/Shortcuts";
 import type { GridState, LightState } from "../scene/SceneEnvironment";
 import {
   RENDER_PASSES,
@@ -944,6 +946,134 @@ export function usePosing() {
     }
   }
 
+  // ---- M10: preferences, favourites and keyboard shortcuts ---------------
+  const {
+    prefs,
+    isFavorite,
+    toggleFavorite,
+    set: setPref,
+    completeOnboarding,
+    restartOnboarding,
+  } = usePreferences();
+
+  const settingsOpen = ref(false);
+  const showFavoritesOnly = ref(prefs.value.showFavoritesOnly);
+  const tourStep = ref<number | null>(prefs.value.onboardingDone ? null : 0);
+
+  const TOUR: readonly { title: string; body: string; target?: string }[] = [
+    {
+      title: "Welcome to Poseify",
+      body: "Pick a model on the left, click a joint in the viewport to select it, then drag the ring to rotate.",
+    },
+    {
+      title: "FK and IK",
+      body: "FK rotates a single joint. Switch to IK and drag a hand or foot to solve the whole chain.",
+      target: "mode",
+    },
+    {
+      title: "Poses and clips",
+      body: "Apply a pose, or scrub a CMU motion clip and freeze any frame as a static pose.",
+      target: "poses",
+    },
+    {
+      title: "Export",
+      body: "Render Regular, OpenPose, Depth, Canny and Normals passes, or export the posed figure as OBJ.",
+      target: "export",
+    },
+  ];
+
+  function nextTourStep(): void {
+    if (tourStep.value === null) return;
+    if (tourStep.value >= TOUR.length - 1) {
+      tourStep.value = null;
+      completeOnboarding();
+    } else {
+      tourStep.value += 1;
+    }
+  }
+
+  function prevTourStep(): void {
+    if (tourStep.value === null || tourStep.value <= 0) return;
+    tourStep.value -= 1;
+  }
+
+  function skipTour(): void {
+    tourStep.value = null;
+    completeOnboarding();
+  }
+
+  function replayTour(): void {
+    // tourStep is its own ref, so clearing the preference alone would not
+    // reopen the tour.
+    restartOnboarding();
+    tourStep.value = 0;
+    settingsOpen.value = false;
+  }
+
+  function toggleFavoritesFilter(): void {
+    showFavoritesOnly.value = !showFavoritesOnly.value;
+    setPref("showFavoritesOnly", showFavoritesOnly.value);
+  }
+
+  function openSettings(): void {
+    settingsOpen.value = !settingsOpen.value;
+  }
+
+  function deleteSelection(): void {
+    // A selected prop wins over the active model; both are optional.
+    if (selectedPropId.value) {
+      removeProp(selectedPropId.value);
+      return;
+    }
+    if (activeModelId.value) removeModel(activeModelId.value);
+  }
+
+  const catalogById = computed(
+    () => new Map(MODEL_CATALOG.map((m) => [m.id, m])),
+  );
+
+  const favoriteModels = computed(() =>
+    prefs.value.favorites
+      .map((id) => catalogById.value.get(id))
+      .filter((m): m is CatalogEntry => !!m),
+  );
+
+  function handleShortcutKey(event: KeyboardEvent): void {
+    const action: ShortcutAction | null = resolveShortcut(event);
+    if (!action) return;
+    // Let the browser keep the chords we do not own.
+    if (action !== "help") event.preventDefault();
+    switch (action) {
+      case "undo":
+        undo();
+        break;
+      case "redo":
+        redo();
+        break;
+      case "delete":
+        deleteSelection();
+        break;
+      case "resetPose":
+        if (activeModelId.value) resetPose();
+        break;
+      case "toggleFavorites":
+        toggleFavoritesFilter();
+        break;
+      case "openSettings":
+        openSettings();
+        break;
+      case "togglePlayback":
+        if (activeClipId.value) togglePlayback();
+        break;
+      case "frameScene":
+        frameScene();
+        break;
+      case "help":
+        settingsOpen.value = true;
+        break;
+    }
+  }
+
   onBeforeUnmount(dispose);
 
   return {
@@ -1044,5 +1174,23 @@ export function usePosing() {
     exportCurrentScene,
     importSceneFile,
     handleHistoryKey,
+    handleShortcutKey,
+    prefs,
+    isFavorite,
+    toggleFavorite,
+    favoriteModels,
+    showFavoritesOnly,
+    toggleFavoritesFilter,
+    settingsOpen,
+    openSettings,
+    setPref,
+    tourStep,
+    tour: TOUR,
+    nextTourStep,
+    prevTourStep,
+    skipTour,
+    completeOnboarding,
+    restartOnboarding,
+    replayTour,
   };
 }

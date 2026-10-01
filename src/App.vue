@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { usePosing } from "./composables/usePosing";
 import type { CatalogEntry } from "./models/ModelCatalog";
 import { PREMADE_SCENES } from "./scene/PremadeScenes";
+import { SHORTCUT_HELP } from "./prefs/Shortcuts";
 
 const {
   mount,
@@ -93,7 +94,21 @@ const {
   importSceneFile,
   undo,
   redo,
-  handleHistoryKey,
+  handleShortcutKey,
+  prefs,
+  isFavorite,
+  toggleFavorite,
+  showFavoritesOnly,
+  toggleFavoritesFilter,
+  settingsOpen,
+  openSettings,
+  setPref,
+  tourStep,
+  tour,
+  nextTourStep,
+  prevTourStep,
+  skipTour,
+  replayTour,
 } = usePosing();
 
 onMounted(() => {
@@ -104,11 +119,11 @@ onMounted(() => {
 });
 
 onMounted(() => {
-  window.addEventListener("keydown", handleHistoryKey);
+  window.addEventListener("keydown", handleShortcutKey);
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("keydown", handleHistoryKey);
+  window.removeEventListener("keydown", handleShortcutKey);
 });
 
 async function addModel(config: CatalogEntry): Promise<void> {
@@ -125,6 +140,7 @@ async function addModel(config: CatalogEntry): Promise<void> {
 const groups = computed(() => {
   const map = new Map<string, CatalogEntry[]>();
   for (const m of catalog) {
+    if (showFavoritesOnly.value && !isFavorite(m.id)) continue;
     const list = map.get(m.family);
     if (list) list.push(m);
     else map.set(m.family, [m]);
@@ -164,6 +180,7 @@ function onSceneFile(event: Event): void {
 }
 
 const premadeScenes = PREMADE_SCENES;
+const shortcutHelp = SHORTCUT_HELP;
 
 // Render thumbnails lazily: only the poses currently visible in the picker,
 // so opening it does not generate 98 renders up front.
@@ -183,6 +200,25 @@ watch(
     <header class="topbar">
       <span class="brand">Poseify</span>
       <span class="status">{{ status }}</span>
+      <button
+        type="button"
+        class="chip"
+        :class="{ active: showFavoritesOnly }"
+        :aria-pressed="showFavoritesOnly"
+        title="Show only favourited models (F)"
+        @click="toggleFavoritesFilter()"
+      >
+        &#9829;
+      </button>
+      <button
+        type="button"
+        class="chip"
+        :aria-expanded="settingsOpen"
+        title="Settings and keyboard shortcuts (Ctrl+,)"
+        @click="openSettings()"
+      >
+        Settings
+      </button>
     </header>
 
     <aside class="panel panel-left">
@@ -191,28 +227,45 @@ watch(
         <div v-for="[family, items] in groups" :key="family" class="group">
           <h3>{{ family }}</h3>
           <div class="grid">
-            <button
+            <!-- The tile and its heart are siblings: a <span role="button">
+                 inside a <button> is invalid nesting and its click never
+                 reaches the Vue handler. -->
+            <div
               v-for="m in items"
               :key="m.id"
-              class="chip"
-              :class="{
-                tile: true,
-                hasThumb: !!thumbnails[m.id],
-                loading: loadingId === m.id,
-              }"
-              :disabled="loadingId === m.id"
-              type="button"
-              @click="addModel(m)"
+              class="tile-wrap"
             >
-              <img
-                v-if="thumbnails[m.id]"
-                class="thumb"
-                :src="thumbnails[m.id]"
-                :alt="`${m.name} preview`"
-              />
-              <span v-else class="thumb placeholder" aria-hidden="true"></span>
-              {{ m.name }}
-            </button>
+              <button
+                class="chip"
+                :class="{
+                  tile: true,
+                  hasThumb: !!thumbnails[m.id],
+                  loading: loadingId === m.id,
+                }"
+                :disabled="loadingId === m.id"
+                type="button"
+                @click="addModel(m)"
+              >
+                <img
+                  v-if="thumbnails[m.id]"
+                  class="thumb"
+                  :src="thumbnails[m.id]"
+                  :alt="`${m.name} preview`"
+                />
+                <span v-else class="thumb placeholder" aria-hidden="true"></span>
+                {{ m.name }}
+              </button>
+              <button
+                type="button"
+                class="fav"
+                :aria-label="`${isFavorite(m.id) ? 'Unfavourite' : 'Favourite'} ${m.name}`"
+                :aria-pressed="isFavorite(m.id)"
+                :class="{ on: isFavorite(m.id) }"
+                @click="toggleFavorite(m.id)"
+              >
+                &#9829;
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -777,6 +830,84 @@ watch(
         </figure>
       </div>
     </section>
+
+    <div v-if="settingsOpen" class="modal" @click.self="openSettings()">
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Settings">
+        <header>
+          <h2>Settings</h2>
+          <button type="button" class="chip" @click="openSettings()">&times;</button>
+        </header>
+
+        <section>
+          <h3>Preferences</h3>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              :checked="prefs.exportTransparencyDefault"
+              @change="setPref('exportTransparencyDefault', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Transparent background by default</span>
+          </label>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              :checked="prefs.snapPropsByDefault"
+              @change="setPref('snapPropsByDefault', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Snap new props to the floor</span>
+          </label>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              :checked="prefs.autoKeyframes"
+              @change="setPref('autoKeyframes', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Record a keyframe on every pose change</span>
+          </label>
+        </section>
+
+        <section>
+          <h3>Keyboard shortcuts</h3>
+          <dl class="shortcuts">
+            <template v-for="s in shortcutHelp" :key="s.keys">
+              <dt>{{ s.keys }}</dt>
+              <dd>{{ s.label }}</dd>
+            </template>
+          </dl>
+          <button type="button" class="chip wide" @click="replayTour()">
+            Replay the tour
+          </button>
+        </section>
+      </div>
+    </div>
+
+    <div v-if="tourStep !== null" class="tour">
+      <div class="tour-card" role="dialog" aria-modal="true">
+        <h3>{{ tour[tourStep].title }}</h3>
+        <p>{{ tour[tourStep].body }}</p>
+        <footer>
+          <span class="tour-dots">
+            <i
+              v-for="(t, i) in tour"
+              :key="t.title"
+              :class="{ on: i === tourStep }"
+            ></i>
+          </span>
+          <button type="button" class="chip" @click="skipTour()">Skip</button>
+          <button
+            type="button"
+            class="chip"
+            :disabled="tourStep === 0"
+            @click="prevTourStep()"
+          >
+            Back
+          </button>
+          <button type="button" class="chip primary" @click="nextTourStep()">
+            {{ tourStep >= tour.length - 1 ? "Done" : "Next" }}
+          </button>
+        </footer>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -904,6 +1035,12 @@ button.chip.tile {
   gap: 3px;
   padding: 4px;
   text-align: center;
+  width: 100%;
+  height: 100%;
+}
+
+.tile-wrap {
+  position: relative;
 }
 
 button.chip.tile.hasThumb {
@@ -1375,5 +1512,146 @@ button.chip:disabled {
   margin-top: 3px;
   font-size: 10px;
   color: var(--poseify-text-dim);
+}
+
+/* ---- M10: favourites, settings and onboarding tour ---- */
+.fav {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font-size: 14px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  user-select: none;
+}
+
+.fav.on {
+  color: #ff5c7a;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 8, 14, 0.68);
+}
+
+.sheet {
+  width: min(460px, 92vw);
+  max-height: 84vh;
+  overflow: auto;
+  padding: 16px 18px 20px;
+  border-radius: 10px;
+  background: #14171f;
+  border: 1px solid #262b36;
+  color: #e6e8ee;
+}
+
+.sheet header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.sheet h3 {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8f97a8;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  cursor: pointer;
+}
+
+.shortcuts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.shortcuts dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #9fd0ff;
+  white-space: nowrap;
+}
+
+.shortcuts dd {
+  margin: 0;
+  color: #c3c8d4;
+}
+
+.tour {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 70;
+  display: flex;
+  justify-content: center;
+  padding: 18px;
+  pointer-events: none;
+}
+
+.tour-card {
+  pointer-events: auto;
+  width: min(520px, 94vw);
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #171b24;
+  border: 1px solid #2b3140;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+  color: #e6e8ee;
+}
+
+.tour-card h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.tour-card p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c3c8d4;
+}
+
+.tour-card footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 5px;
+  margin-right: auto;
+}
+
+.tour-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3a4152;
+}
+
+.tour-dots i.on {
+  background: #6fb4ff;
 }
 </style>
