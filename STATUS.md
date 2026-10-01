@@ -16,7 +16,7 @@ Last updated: 2026-09-30
 | M4 — Camera, lighting, environment | **PASS** | 71/71 tests; build clean. Browser-verified: FOV 15° vs 100° visibly changes perspective, light azimuth/elevation changes shading, cast shadow renders opposite the light, two-layer grid with adjustable cell/divisions |
 | M5 — Export (5 passes + OBJ) | **PASS** | 106/106 tests; build clean. Browser-verified at 2048×2048: 5 passes produce 5 distinct payloads; OBJ export of the posed mannequin yields 86,640 verts / 28,880 faces in metres |
 | M6 — Poses | **PASS** | 137/137 tests; build clean. Browser-verified: 98 pose tiles with 60 rendered thumbnails, search "sword" -> exactly 3, "lying" tag -> exactly 5. Pose transfer measured at 5.16e-8 rad max error between two differently-proportioned models |
-| M7 — Animations (CMU mocap) | TODO | — |
+| M7 — Animations (CMU mocap) | **PASS** | 130 clips imported from CMU, 179/179 tests, build clean. Browser-verified: clips listed, transport loads, scrubbing to 0.60s moves LeftHand 21 cm and changes the Spine quaternion |
 | M8 — Props + image planes | TODO | — |
 | M9 — Scenes, save/load, undo | TODO | — |
 | M10 — Polish + ship | TODO | — |
@@ -281,6 +281,56 @@ explains itself rather than appearing broken.
 - Pose transfer: `boxing_stance` applied to Mannequin Male, then to Muscular
   Male. Maximum per-bone quaternion angle error across all 11 bones was
   **5.16e-8 rad**, i.e. identical to float precision.
+
+## M7 notes
+
+- Source: CMU Graphics Lab Motion Capture Database, whose stated terms are
+  "free for all uses". 130 clips across 13 subjects, 31,363 frames, 261 s of
+  motion after downsampling.
+- `src/anim/AsfAmc.ts` parses **ASF 1.10**, which is what CMU actually serves,
+  not the classic `:OFFSETS` layout: `:bonedata` carries per-bone
+  direction/length/axis and `:hierarchy` carries parentage. The AMC is the
+  `:FULLY-SPECIFIED` variant, where each frame is a bare integer followed by
+  named bone lines and the root line carries translation before rotation.
+- `mapCmuBoneToContract` maps CMU names (`lhipjoint`, `lfemur`, `lowerback`) onto
+  contract bones, returning null rather than guessing. 24 of 30 CMU bones map;
+  the 6 that do not are fingers, thumbs and wrists, which have no
+  contract equivalent at this granularity.
+- Clips ship as a **52 KB manifest plus one file per clip** (~200 KB each),
+  fetched on demand. A single-file build was tried first and reached 477 MB.
+- Output is downsampled from CMU's 120 fps to 30 fps and capped at 12 s per
+  clip: 477 MB -> 21.6 MB total, with nothing downloaded until a clip plays.
+- `ClipPlayer` drives playback from the render loop's clock (clamped, so a
+  backgrounded tab does not jump forward) and supports play/pause, scrub, frame
+  step and loop. Scrubbing freezes the frame as a static pose.
+
+### Bugs found by testing against real downloaded data
+
+All three were caught by parsing real CMU files rather than a hand-written
+fixture that could have drifted from the actual format:
+
+1. **Rotations indexed by bone instead of channel.** The AMC parser wrote to
+   `rotations[idx]` where `idx` is a bone index, but each bone owns three
+   consecutive channels. Every bone past the first read another bone's values,
+   scrambling every clip's pose. This would have been completely invisible
+   without real-data assertions on channel count and per-bone change.
+2. **Build script skipped every subject.** The parsed skeleton was assigned to
+   the map but not to the local variable, so `if (!skeleton) continue` fired on
+   first visit and the run produced an empty library.
+3. **Quantisation broke unit length.** Rounding each quaternion component
+   independently lands ~0.5% off the unit sphere; across tens of thousands of
+   frames that error accumulates. Quaternions are now renormalised after
+   rounding.
+
+### M7 verification detail
+
+- 40 clips listed in the picker; selecting one loads the transport
+  ("frame 0 - 0.00s / 1.25s").
+- Scrubbing to 0.60 s: Spine quaternion changed from
+  `(-0.0364, 0.0084, -0.0142, 0.9992)` to `(-0.0486, 0.0245, 0.0628, 0.9965)`
+  and `LeftHand` world position moved from `(-0.288, 1.88, -0.084)` to
+  `(-0.435, 1.822, -0.153)` — 21 cm of motion, confirming the mocap genuinely
+  drives the skinned mesh rather than only moving empty bones.
 
 ## Legal posture
 
