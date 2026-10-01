@@ -17,7 +17,7 @@ Last updated: 2026-09-30
 | M5 — Export (5 passes + OBJ) | **PASS** | 106/106 tests; build clean. Browser-verified at 2048×2048: 5 passes produce 5 distinct payloads; OBJ export of the posed mannequin yields 86,640 verts / 28,880 faces in metres |
 | M6 — Poses | **PASS** | 137/137 tests; build clean. Browser-verified: 98 pose tiles with 60 rendered thumbnails, search "sword" -> exactly 3, "lying" tag -> exactly 5. Pose transfer measured at 5.16e-8 rad max error between two differently-proportioned models |
 | M7 — Animations (CMU mocap) | **PASS** | 130 clips imported from CMU, 179/179 tests, build clean. Browser-verified: clips listed, transport loads, scrubbing to 0.60s moves LeftHand 21 cm and changes the Spine quaternion |
-| M8 — Props + image planes | TODO | — |
+| M8 — Props + image planes | **PASS** | 202/202 tests; build clean. Browser-verified: chair renders at real-world scale and the seated pose places the figure on it (footY 0.454 vs a 0.45 m seat) |
 | M9 — Scenes, save/load, undo | TODO | — |
 | M10 — Polish + ship | TODO | — |
 
@@ -331,6 +331,53 @@ fixture that could have drifted from the actual format:
   and `LeftHand` world position moved from `(-0.288, 1.88, -0.084)` to
   `(-0.435, 1.822, -0.153)` — 21 cm of motion, confirming the mocap genuinely
   drives the skinned mesh rather than only moving empty bones.
+
+## M8 notes
+
+- `src/props/PropSystem.ts` handles OBJ/GLB import, transform, and snapping:
+  floor snap works by **bounds**, not by geometry origin, because imported
+  meshes rarely have their origin at their base.
+- `src/props/PropCatalog.ts` builds the starter set in code — chair, table,
+  barrel, sword, ball, crate, cylinder, cone, plane — so the shipped props are
+  original MIT work with no licence questions. Sizes are real-world metres
+  (0.45 m seat, 0.75 m table).
+- `src/props/ImagePlane.ts` imports an image as a real quad for composition
+  and perspective checks, preserving aspect ratio by default.
+
+### Three pose defects found by measuring, not eyeballing
+
+All three were invisible to tests and would have shipped:
+
+1. **Rotations replaced bind orientation instead of composing on top of it.**
+    Two models sharing the rig contract can have different rest orientations,
+    so the same pose landed differently on each — exactly what pose transfer
+    must not do. `setBoneRotation` now multiplies the bind quaternion, and
+    `getBoneQuaternion` reports the authored value rather than the composed one.
+    Covered by a test giving two rigs different binds.
+2. **The rig has no pelvis bone, and `Hips` is the skeleton root**, so rotating
+    it spins the figure rather than lowering it. Seated and kneeling poses
+    floated above the chair with their legs behind it. Poses now carry an
+    optional `rootOffset`, folded back into the bind offset so repeated
+    applications do not accumulate.
+3. **Seated leg angles rested on two wrong assumptions.** Measured on the
+    contract rest pose: a positive `UpLeg` X rotation swings the thigh
+    **backward**, so a seated pose needs a negative one; and with the thigh
+    forward, the knee must fold the shin **down**, which is the opposite sign
+    again. Both are derived from measurement and documented in the library.
+
+### Prop size errors caught by tests
+
+- The declared sword depth was 0.05 m against a real 0.09 m (the pommel sphere
+  set the depth, not the blade).
+- Crate battens sat proud of the crate, making it 0.50 m deep against a
+  declared 0.45 m; they are now inset flush.
+- `ball`, `plane`, `cylinder` and `cone` returned bare Meshes rather than
+  Groups, so nothing could be parented to them.
+
+### M8 verification detail
+
+- Adding a chair and applying `seated_relaxed` places the figure on the seat
+  with both feet on the floor: `footY` 0.454 m against a 0.45 m seat height.
 
 ## Legal posture
 
