@@ -175,6 +175,17 @@ export class PoseController {
     this.domElement.removeEventListener("pointerdown", this.handlePointerDown);
     this.domElement.removeEventListener("pointerup", this.handlePointerUp);
     this.gizmo.detach();
-    this.gizmo.dispose();
+    // three 0.169: TransformControls extends Controls, not Object3D, so its own
+    // dispose() calls a missing this.traverse. The helper is the Object3D that
+    // actually owns the gizmo geometry and materials, so free those by hand.
+    // disconnect() is the DOM-listener half of dispose() and is safe to call.
+    this.gizmo.disconnect();
+    this.gizmoHelper.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      mesh.geometry?.dispose();
+      const material = mesh.material;
+      if (Array.isArray(material)) material.forEach((m) => m.dispose());
+      else material?.dispose();
+    });
   }
 }

@@ -64,11 +64,14 @@ Last updated: 2026-09-30
 - `src/models/ModelLoader.ts`: GLTF/GLB/FBX/OBJ with runtime-configurable
   Draco + KTX2 decoder paths. FBX and OBJ loaders are dynamic imports so they
   cost nothing until a model of that format is requested.
-- `src/models/ProceduralHumanoid.ts`: rigged mannequin built from the contract's
-  own parent map, skinned by nearest bone. Six proportion presets (adult, child,
-  brute, muscular, skinny, stocky) cover the realistic-human morph range.
-- `src/models/ModelCatalog.ts`: 18 shipped models across human/stylized
-  families, each with its own gizmo tuning.
+- `src/models/VendorCatalog.ts`: 33 models scraped from the PoseMy.Art CDN,
+  across human/stylized/bot/skeleton/creature/animal families, each with its
+  own gizmo tuning. All procedurally generated models have been removed.
+- `src/models/ModelCatalog.ts`: the shipped catalogue. Vendor FBX only — there
+  is no procedural fallback any more.
+- `src/models/ModelThumbnail.ts`: renders a real thumbnail per model by
+  loading the FBX, framing its bounds and capturing a 128px PNG. Cached per id
+  with in-flight de-duplication.
 - `src/posing/PosableSkeleton.ts`: FK posing with authored-rotation source of
   truth, `applyPose` / `getPose` for transfer, and per-chain CCD IK solvers.
 - `src/posing/PoseController.ts`: click-to-select raycasting against joint
