@@ -7,6 +7,7 @@ import { PoseController, type InteractionMode } from "../posing/PoseController";
 import { PosableSkeleton } from "../posing/PosableSkeleton";
 import {
   MODEL_CATALOG,
+  findModel,
   loadModel,
   isVendorModel,
   type CatalogEntry,
@@ -48,6 +49,23 @@ import {
   type PropConfig,
 } from "../props/PropSystem";
 import { createImagePlane, updateImagePlane } from "../props/ImagePlane";
+import {
+  emptyScene,
+  parseScene,
+  sceneToJson,
+  type SceneState,
+} from "../scene/Scene";
+import { History, historyShortcut } from "../scene/History";
+import { PREMADE_SCENES } from "../scene/PremadeScenes";
+import {
+  deleteScene,
+  downloadScene,
+  listSavedScenes,
+  loadScene as loadStoredScene,
+  readSceneFile,
+  saveScene,
+  type SceneSummary,
+} from "../scene/SceneStorage";
 
 export interface PosedModel {
   config: CatalogEntry;
@@ -431,6 +449,7 @@ export function usePosing() {
     active.skeleton.applyPose(pose.bones, pose.rootOffset);
     appliedPoseId.value = pose.id;
     poseError.value = null;
+    commit();
     return true;
   }
 
@@ -566,6 +585,7 @@ export function usePosing() {
       };
       props.value = [...props.value, placed];
       selectedPropId.value = placed.id;
+      commit();
       return placed;
     } catch (err) {
       propError.value = err instanceof Error ? err.message : String(err);
@@ -597,6 +617,7 @@ export function usePosing() {
       };
       props.value = [...props.value, placed];
       selectedPropId.value = placed.id;
+      commit();
     } catch (err) {
       propError.value = err instanceof Error ? err.message : String(err);
     }
@@ -609,6 +630,7 @@ export function usePosing() {
     vp.scene.remove(placed.root);
     props.value = props.value.filter((p) => p.id !== id);
     if (selectedPropId.value === id) selectedPropId.value = null;
+    commit();
   }
 
   /** Re-drop a prop onto the floor after it has been moved. */
@@ -685,6 +707,241 @@ export function usePosing() {
   function propBounds(id: string): THREE.Box3 | null {
     const placed = props.value.find((p) => p.id === id);
     return placed ? measure(placed.root) : null;
+  }
+
+  // -------------------------------------------------------------- scenes
+
+  const sceneName = ref("Untitled");
+  const savedScenes = ref<SceneSummary[]>([]);
+  const canUndo = ref(false);
+  const canRedo = ref(false);
+  const sceneError = ref<string | null>(null);
+  const history = new History<SceneState>({ limit: 80 });
+
+  /** Capture the live scene as plain data. */
+  function captureScene(): SceneState {
+    const vp = viewport.value;
+    const base = emptyScene(sceneName.value);
+    return {
+      ...base,
+      name: sceneName.value,
+      models: models.value.map((m) => ({
+        id: m.config.id,
+        pose: m.skeleton.getPose(),
+        position: [m.root.position.x, m.root.position.y, m.root.position.z],
+        rotation: [
+          m.root.quaternion.x,
+          m.root.quaternion.y,
+          m.root.quaternion.z,
+          m.root.quaternion.w,
+        ],
+        scale: m.root.scale.x,
+      })),
+      props: props.value.map((p) => ({
+        id: p.config.procedural ?? null,
+        name: p.config.name,
+        position: [p.root.position.x, p.root.position.y, p.root.position.z],
+        rotation: [
+          p.root.quaternion.x,
+          p.root.quaternion.y,
+          p.root.quaternion.z,
+          p.root.quaternion.w,
+        ],
+        scale: [p.root.scale.x, p.root.scale.y, p.root.scale.z],
+      })),
+      camera: vp
+        ? {
+            position: [
+              vp.camera.position.x,
+              vp.camera.position.y,
+              vp.camera.position.z,
+            ],
+            target: [
+              vp.controls.target.x,
+              vp.controls.target.y,
+              vp.controls.target.z,
+            ],
+            fov: vp.camera.fov,
+          }
+        : base.camera,
+      light: vp ? { ...vp.environment.getLight() } : base.light,
+      grid: vp ? { ...vp.environment.getGrid() } : base.grid,
+    };
+  }
+
+  /** Record the current state so the change can be undone. Call AFTER a change. */
+  function commit(): void {
+    history.push(captureScene());
+    canUndo.value = history.canUndo;
+    canRedo.value = history.canRedo;
+  }
+
+  function undo(): void {
+    const state = history.undo();
+    if (!state) return;
+    void applyScene(state);
+    canUndo.value = history.canUndo;
+    canRedo.value = history.canRedo;
+  }
+
+  function redo(): void {
+    const state = history.redo();
+    if (!state) return;
+    void applyScene(state);
+    canUndo.value = history.canUndo;
+    canRedo.value = history.canRedo;
+  }
+
+  /** Rebuild the scene from data. Models load asynchronously. */
+  async function applyScene(state: SceneState): Promise<void> {
+    const vp = viewport.value;
+    if (!vp) return;
+    sceneError.value = null;
+
+    for (const m of models.value) vp.scene.remove(m.root);
+    for (const p of props.value) vp.scene.remove(p.root);
+    for (const plane of imagePlanes.value) vp.scene.remove(plane.mesh);
+    models.value = [];
+    props.value = [];
+    imagePlanes.value = [];
+    selectedPropId.value = null;
+
+    sceneName.value = state.name || "Untitled";
+    const missing: string[] = [];
+
+    for (const spec of state.models) {
+      const config = findModel(spec.id);
+      if (!config) {
+        missing.push(spec.id);
+        continue;
+      }
+      try {
+        const built = await loadModel(config, { renderer: vp.renderer });
+        built.root.position.fromArray(spec.position);
+        built.root.quaternion.fromArray(spec.rotation);
+        built.root.scale.setScalar(spec.scale || 1);
+        vp.scene.add(built.root);
+
+        const skeleton = new PosableSkeleton(built.root, config, {
+          requireHands: false,
+        });
+        skeleton.applyPose(spec.pose, spec.rootOffset);
+        models.value = [...models.value, { config, skeleton, root: built.root }];
+      } catch (err) {
+        // Surface why a model failed rather than only reporting it missing:
+        // a silently empty scene is the hardest kind of bug to diagnose.
+        missing.push(`${spec.id} (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+
+    for (const spec of state.props) {
+      const config = spec.id ? findProp(spec.id) : undefined;
+      if (!config) {
+        missing.push(spec.id ?? spec.name ?? "prop");
+        continue;
+      }
+      const root = buildProp(config.procedural!);
+      root.position.fromArray(spec.position);
+      root.quaternion.fromArray(spec.rotation);
+      root.scale.fromArray(spec.scale ?? [1, 1, 1]);
+      vp.scene.add(root);
+      props.value = [
+        ...props.value,
+        { id: `${config.id}_${props.value.length}`, config, root },
+      ];
+    }
+
+    vp.camera.position.fromArray(state.camera.position);
+    vp.controls.target.fromArray(state.camera.target);
+    vp.environment.setFov(state.camera.fov);
+    vp.controls.update();
+
+    vp.environment.setLight(state.light);
+    vp.environment.setGrid(state.grid);
+    fov.value = vp.environment.getFov();
+    light.value = vp.environment.getLight();
+    grid.value = vp.environment.getGrid();
+
+    if (models.value.length > 0) setActive(models.value[0].config.id);
+
+    if (missing.length > 0) {
+      sceneError.value =
+        `Scene loaded with ${missing.length} unavailable item(s): ` +
+        missing.slice(0, 3).join(", ") +
+        (missing.length > 3 ? ", ..." : "");
+    }
+  }
+
+  async function loadPremadeScene(name: string): Promise<void> {
+    const scene = PREMADE_SCENES.find((s) => s.name === name);
+    if (!scene) {
+      sceneError.value = `Unknown scene: ${name}`;
+      return;
+    }
+    await applyScene(scene);
+    history.initial(captureScene());
+    canUndo.value = false;
+    canRedo.value = false;
+  }
+
+  function refreshSavedScenes(): void {
+    savedScenes.value = listSavedScenes();
+  }
+
+  function saveCurrentScene(): boolean {
+    const ok = saveScene(captureScene());
+    if (!ok) sceneError.value = "Could not save the scene (storage unavailable).";
+    refreshSavedScenes();
+    return ok;
+  }
+
+  async function openSavedScene(name: string): Promise<void> {
+    const state = loadStoredScene(name);
+    if (!state) {
+      sceneError.value = `Could not open "${name}".`;
+      return;
+    }
+    await applyScene(state);
+    history.initial(captureScene());
+    canUndo.value = false;
+    canRedo.value = false;
+  }
+
+  function deleteSavedScene(name: string): void {
+    deleteScene(name);
+    refreshSavedScenes();
+  }
+
+  function exportCurrentScene(): void {
+    downloadScene(captureScene());
+  }
+
+  async function importSceneFile(file: File): Promise<void> {
+    sceneError.value = null;
+    try {
+      const state = readSceneFile(await file.text());
+      if (!state) {
+        sceneError.value = "That file is not a valid Poseify scene.";
+        return;
+      }
+      await applyScene(state);
+      history.initial(captureScene());
+      canUndo.value = false;
+      canRedo.value = false;
+    } catch {
+      sceneError.value = "Could not read that file.";
+    }
+  }
+
+  function handleHistoryKey(event: KeyboardEvent): void {
+    const action = historyShortcut(event);
+    if (action === "undo") {
+      event.preventDefault();
+      undo();
+    } else if (action === "redo") {
+      event.preventDefault();
+      redo();
+    }
   }
 
   onBeforeUnmount(dispose);
@@ -770,5 +1027,22 @@ export function usePosing() {
     removeImagePlane,
     setImagePlaneOpacity,
     propBounds,
+    sceneName,
+    savedScenes,
+    canUndo,
+    canRedo,
+    sceneError,
+    captureScene,
+    commit,
+    undo,
+    redo,
+    loadPremadeScene,
+    refreshSavedScenes,
+    saveCurrentScene,
+    openSavedScene,
+    deleteSavedScene,
+    exportCurrentScene,
+    importSceneFile,
+    handleHistoryKey,
   };
 }

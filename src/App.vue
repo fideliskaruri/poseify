@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { usePosing } from "./composables/usePosing";
 import type { CatalogEntry } from "./models/ModelCatalog";
+import { PREMADE_SCENES } from "./scene/PremadeScenes";
 
 const {
   mount,
@@ -78,12 +79,36 @@ const {
   placePropAtBone,
   addImagePlane,
   removeImagePlane,
+  sceneName,
+  savedScenes,
+  canUndo,
+  canRedo,
+  sceneError,
+  loadPremadeScene,
+  refreshSavedScenes,
+  saveCurrentScene,
+  openSavedScene,
+  deleteSavedScene,
+  exportCurrentScene,
+  importSceneFile,
+  undo,
+  redo,
+  handleHistoryKey,
 } = usePosing();
 
 onMounted(() => {
   init();
   loadThumbnails();
   void loadClips();
+  refreshSavedScenes();
+});
+
+onMounted(() => {
+  window.addEventListener("keydown", handleHistoryKey);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleHistoryKey);
 });
 
 async function addModel(config: CatalogEntry): Promise<void> {
@@ -130,6 +155,15 @@ function onImageFile(event: Event): void {
   if (file) void addImagePlane(file);
   input.value = "";
 }
+
+function onSceneFile(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (file) void importSceneFile(file);
+  input.value = "";
+}
+
+const premadeScenes = PREMADE_SCENES;
 
 // Render thumbnails lazily: only the poses currently visible in the picker,
 // so opening it does not generate 98 renders up front.
@@ -613,6 +647,84 @@ watch(
           {{ imagePlanes.length ? "Add another" : "Add image plane" }}
           <input type="file" accept="image/*" hidden @change="onImageFile" />
         </label>
+      </section>
+
+      <section>
+        <h2>Scene</h2>
+        <p v-if="sceneError" class="hint warn">{{ sceneError }}</p>
+
+        <label class="field">
+          <span>Name</span>
+          <input v-model="sceneName" type="text" placeholder="Untitled" />
+        </label>
+
+        <div class="transport-buttons">
+          <button
+            type="button"
+            class="chip small"
+            :disabled="!canUndo"
+            title="Undo (Ctrl+Z)"
+            @click="undo()"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            class="chip small"
+            :disabled="!canRedo"
+            title="Redo (Ctrl+Shift+Z)"
+            @click="redo()"
+          >
+            Redo
+          </button>
+        </div>
+
+        <div class="scene-buttons">
+          <button type="button" class="chip wide" @click="saveCurrentScene()">
+            Save
+          </button>
+          <button type="button" class="chip wide" @click="exportCurrentScene()">
+            Export file
+          </button>
+        </div>
+
+        <label class="file-btn">
+          Import scene file
+          <input type="file" accept=".json,application/json" hidden @change="onSceneFile" />
+        </label>
+
+        <h3 class="sub">Premade</h3>
+        <div class="scene-list">
+          <button
+            v-for="s in premadeScenes"
+            :key="s.name"
+            type="button"
+            class="scene-row"
+            :title="s.description"
+            @click="loadPremadeScene(s.name)"
+          >
+            {{ s.name }}
+          </button>
+        </div>
+
+        <template v-if="savedScenes.length">
+          <h3 class="sub">Saved</h3>
+          <div class="scene-list">
+            <div v-for="s in savedScenes" :key="s.name" class="scene-row saved">
+              <span class="scene-name" @click="openSavedScene(s.name)">
+                {{ s.name }}
+              </span>
+              <button
+                type="button"
+                class="chip tiny danger"
+                :aria-label="`Delete ${s.name}`"
+                @click="deleteSavedScene(s.name)"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        </template>
       </section>
 
       <section v-if="activeModelId">
@@ -1130,6 +1242,59 @@ button.chip.tiny {
 
 button.chip.tiny.danger {
   color: #f0b4b4;
+}
+
+.scene-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.panel h3.sub {
+  margin: 8px 0 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--poseify-text-dim);
+}
+
+.scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+button.scene-row,
+.scene-row.saved {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 5px;
+  background: #232833;
+  color: var(--poseify-text);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.scene-row:hover,
+.scene-row.saved:hover {
+  border-color: var(--poseify-accent);
+}
+
+.scene-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .error {
