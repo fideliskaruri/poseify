@@ -4,6 +4,7 @@ import { usePosing } from "./composables/usePosing";
 import type { CatalogEntry } from "./models/ModelCatalog";
 import { PREMADE_SCENES } from "./scene/PremadeScenes";
 import { SHORTCUT_HELP } from "./prefs/Shortcuts";
+import { isHidden, isLocked } from "./scene/ObjectState";
 
 const {
   mount,
@@ -13,12 +14,22 @@ const {
   models,
   activeModelId,
   selectedBone,
+  selectedObjectId,
+  objectGizmoMode,
   boneNames,
   catalog,
   init,
   attachModel,
   setActive,
   selectBone,
+  selectObject,
+  setObjectGizmoMode,
+  duplicateSelectedObject,
+  toggleObjectHidden,
+  toggleObjectLocked,
+  setSelectedObjectColor,
+  selectableObjects,
+  deleteSelectedObject,
   setMode,
   removeModel,
   resetPose,
@@ -148,6 +159,24 @@ const groups = computed(() => {
   return [...map.entries()];
 });
 
+// Phase 1 object picker. Model entries are labelled from the catalogue and
+// prop entries from their own name, so the select reads the same way the
+// Scene list does.
+const objectOptions = computed(() =>
+  selectableObjects().map(({ id, root }) => {
+    const prop = props.value.find((p) => p.id === id);
+    const model = models.value.find((m) => m.instanceId === id);
+    const name = prop ? prop.config.name : (model?.config.name ?? id);
+    // Read the flags rather than root.visible, so a hidden *and* locked object
+    // is labelled with both, matching what the buttons will do.
+    const marks = [
+      isHidden(root) ? "hidden" : "",
+      isLocked(root) ? "locked" : "",
+    ].filter(Boolean);
+    return { id, label: marks.length ? `${name} (${marks.join(", ")})` : name };
+  }),
+);
+
 const propGroups = computed(() => {
   const map = new Map<string, CatalogEntry[]>();
   for (const p of propCatalog) {
@@ -275,7 +304,7 @@ watch(
         <ul class="list">
           <li
             v-for="m in models"
-            :key="m.config.id"
+            :key="m.instanceId"
             :class="{ active: m.config.id === activeModelId }"
           >
             <button type="button" @click="setActive(m.config.id)">
@@ -285,7 +314,7 @@ watch(
               type="button"
               class="danger"
               :aria-label="`Remove ${m.config.name}`"
-              @click="removeModel(m.config.id)"
+              @click="removeModel(m.instanceId)"
             >
               &times;
             </button>
@@ -528,6 +557,115 @@ watch(
         <p class="hint">
           {{ visiblePoses.length }}
           {{ visiblePoses.length === 1 ? "pose" : "poses" }} shown
+        </p>
+      </section>
+
+      <section v-if="objectOptions.length">
+        <h2>Object</h2>
+        <label class="field">
+          <span>Selected</span>
+          <select
+            :value="selectedObjectId ?? ''"
+            @change="selectObject(($event.target as HTMLSelectElement).value || null)"
+          >
+            <option value="">None</option>
+            <option
+              v-for="opt in objectOptions"
+              :key="opt.id"
+              :value="opt.id"
+            >
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+
+        <div class="row gizmo-modes" role="group" aria-label="Object transform mode">
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: objectGizmoMode === 'translate' }"
+            title="Move (G)"
+            @click="setObjectGizmoMode('translate')"
+          >
+            Move
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: objectGizmoMode === 'rotate' }"
+            title="Rotate (Shift+R)"
+            @click="setObjectGizmoMode('rotate')"
+          >
+            Rotate
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: objectGizmoMode === 'scale' }"
+            title="Scale (S)"
+            @click="setObjectGizmoMode('scale')"
+          >
+            Scale
+          </button>
+        </div>
+
+        <div class="row wrap">
+          <button
+            type="button"
+            class="chip"
+            :disabled="!selectedObjectId"
+            title="Duplicate (Shift+D)"
+            @click="duplicateSelectedObject()"
+          >
+            Duplicate
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :disabled="!selectedObjectId"
+            title="Show / hide (Shift+H)"
+            @click="toggleObjectHidden()"
+          >
+            Hide / Show
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :disabled="!selectedObjectId"
+            title="Lock / unlock (L)"
+            @click="toggleObjectLocked()"
+          >
+            Lock
+          </button>
+          <button
+            type="button"
+            class="chip danger"
+            :disabled="!selectedObjectId"
+            title="Delete (Del)"
+            @click="deleteSelectedObject()"
+          >
+            Delete
+          </button>
+        </div>
+
+        <label class="field">
+          <span>Colour</span>
+          <input
+            type="color"
+            :disabled="!selectedObjectId"
+            @input="setSelectedObjectColor(($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <button
+          type="button"
+          class="chip wide"
+          :disabled="!selectedObjectId"
+          @click="setSelectedObjectColor(null)"
+        >
+          Clear colour
+        </button>
+        <p class="hint">
+          The gizmo moves the whole object. FK still rotates a single joint.
         </p>
       </section>
 
@@ -1026,6 +1164,27 @@ button.chip.small {
 button.chip.wide {
   width: 100%;
   text-align: center;
+}
+
+/* Phase 1 object toolbar: a segmented control for the gizmo mode and a
+   wrapping row of the per-object commands. */
+.row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.row.wrap {
+  flex-wrap: wrap;
+}
+
+.gizmo-modes button.chip {
+  flex: 1 1 0;
+  text-align: center;
+}
+
+button.chip.danger {
+  color: var(--poseify-danger, #ff8080);
 }
 
 button.chip.tile {

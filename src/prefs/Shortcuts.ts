@@ -7,6 +7,12 @@ export type ShortcutAction =
   | "redo"
   | "delete"
   | "resetPose"
+  | "gizmoTranslate"
+  | "gizmoRotate"
+  | "gizmoScale"
+  | "duplicateObject"
+  | "toggleHidden"
+  | "toggleLock"
   | "toggleFavorites"
   | "openSettings"
   | "togglePlayback"
@@ -29,6 +35,15 @@ const CHARTS: readonly Chord[] = [
   { action: "delete", key: "delete" },
   { action: "delete", key: "backspace" },
   { action: "resetPose", key: "r" },
+  // Phase 1 object gizmo. R and H are already reset-pose and frame-scene, so
+  // the object equivalents are Shift+R and Shift+H. Modifier matching is exact
+  // in resolveShortcut, so these never shadow the bare keys.
+  { action: "gizmoTranslate", key: "g" },
+  { action: "gizmoRotate", key: "r", shift: true },
+  { action: "gizmoScale", key: "s" },
+  { action: "duplicateObject", key: "d", shift: true },
+  { action: "toggleHidden", key: "h", shift: true },
+  { action: "toggleLock", key: "l" },
   { action: "toggleFavorites", key: "f" },
   { action: "openSettings", key: "," , ctrl: true },
   { action: "togglePlayback", key: " " },
@@ -71,6 +86,12 @@ export const SHORTCUT_HELP: readonly { keys: string; label: string }[] = [
   { keys: "Ctrl/Cmd + Shift + Z", label: "Redo" },
   { keys: "Delete / Backspace", label: "Remove selected model or prop" },
   { keys: "R", label: "Reset the selected model's pose" },
+  { keys: "G", label: "Move the selected object" },
+  { keys: "Shift + R", label: "Rotate the selected object" },
+  { keys: "S", label: "Scale the selected object" },
+  { keys: "Shift + D", label: "Duplicate the selected object" },
+  { keys: "Shift + H", label: "Show / hide the selected object" },
+  { keys: "L", label: "Lock / unlock the selected object" },
   { keys: "F", label: "Show only favourited models" },
   { keys: "Space", label: "Play / pause the animation clip" },
   { keys: "H", label: "Frame the scene in the viewport" },

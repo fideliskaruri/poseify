@@ -5,6 +5,99 @@ Stack fixed: Vue 3 + Vite + TypeScript + Three.js. Zero paid cost.
 
 Last updated: 2026-10-01
 
+## v2 gap-closing run — phase state
+
+Evidence base: `research/GAP-ANALYSIS-2026-10-01.md`. Tracker:
+`research/PARITY.md`. Objective: take Poseify from feature parity to
+better-than, in nine phases.
+
+**Licence decision, taken before any v2 code was written.** The working tree
+held an uncommitted PoseMy.Art content scraper (`tools/scrape-poses.ts`,
+`tools/scrape-assets.ts`, generated `src/pose/VendorPoseLibrary.ts`,
+`src/props/VendorPropCatalog.ts`, `src/scene/VendorSceneLoader.ts`) that
+deleted the authored `PoseLibrary.ts`, `PoseAuthoring.ts`, `PoseThumbnail.ts`
+and `PremadeScenes.ts` and replaced them with 5,170 scraped vendor poses,
+237 KB of scraped prop metadata and scraped scene indexes. That content is
+behind PoseMy.Art's paywall and is not ours to ship, and HARD CONSTRAINT 3
+forbids it. The work was preserved **reversibly** as
+`stash@{0}: vendor-scrape-wip-preserved-2026-10-01` and the tree was restored
+to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
+
+| Phase | State | Verification |
+|---|---|---|
+| P0 — parity table | **PASS** | `research/PARITY.md` written; one row per GAP-ANALYSIS §2 capability across all nine subsections, each `Poseify (after)` cell a real value or explicit `TODO`, plus recorded scope decisions for animations, language and model count |
+| P1 — object transform + object ops | **PARTIAL** | see below |
+| P2–P8 | **TODO** | not started |
+
+### Phase 1 detail
+
+Built, in `src/scene/ObjectState.ts` (new, framework-free, Three-only) and
+wired through `src/composables/usePosing.ts` and `src/App.vue`:
+
+- **Per-object transform record.** `SceneModel`/`SceneProp` now carry a nested
+  `transform {position, rotation, scale}` where models previously had a scalar
+  `scale`, so a figure can be stretched non-uniformly. `parseScene` migrates
+  the v1 flat shape, so scenes saved by the earlier build still open.
+- **Object-level flags.** `state {hidden, locked, color}` travels with the
+  object through save, load and duplicate.
+- **Second gizmo.** `ObjectController` is a whole-object translate/rotate/
+  scale `TransformControls`, deliberately separate from the existing
+  bone-rotation gizmo in `PoseController` — their spaces are incompatible and
+  conflating them breaks bone lengths. One drag is one undo entry.
+- **Duplicate** (`Shift+D`) clones the model *and* its current pose onto a new
+  `PosableSkeleton`, offset by the figure's own bounding width so a chibi and
+  a brute do not separate by the same amount. A duplicate never inherits a
+  lock.
+- **Hide/Show** (`Shift+H`), **Lock** (`L`), **Colour** + Clear, **Delete**.
+- **Shortcuts.** `G` move, `Shift+R` rotate, `S` scale, `Shift+D` duplicate,
+  `Shift+H` hide, `L` lock. `R` stays reset-pose and `H` stays frame-scene, so
+  the object equivalents take the modified key; modifier matching in
+  `resolveShortcut` is exact, so no browser chord is swallowed.
+- **Object toolbar** in the right panel mirroring PoseMy.Art's order, with an
+  object picker listing models and props and labelling hidden/locked ones.
+
+Two real bugs were found by verifying in a browser rather than by reading the
+code, and both are fixed:
+
+1. **Show/Lock labels did not update.** The flags live on `Object3D.userData`,
+   which Vue cannot track, so the picker showed stale text. Fixed with an
+   explicit `objectStateVersion` ref that computeds depend on.
+2. **Two copies of one model collapsed into one.** `PosedModel` had no
+   per-instance identity: the Scene list keyed on `config.id` (non-unique once
+   a model is duplicated, so Vue reused one row) and `removeModel` filtered on
+   `config.id` (so it removed both copies). Fixed by adding
+   `PosedModel.instanceId` and keying/removing on it. This bug predates the v2
+   run; Duplicate is simply what made it reachable.
+
+| Check | Result |
+|---|---|
+| `npm test` | **287 passed / 287** (was 254 at `3de63fe`) |
+| `npm run typecheck` | clean |
+| `npm run build` | succeeds |
+| Browser: object panel appears on model load | **PASS** |
+| Browser: `S` -> Scale, `Shift+R` -> Rotate, `G` -> Move | **PASS** (real key events, segmented control state read back from the DOM) |
+| Browser: `Shift+D` produces a second posed instance | **PASS** (two entries in Scene list and object picker) |
+| Browser: Hide removes the figure from render | **PASS** (two figures in scene, one renders) |
+| Browser: Lock label | **PASS** (`Mannequin Male (locked)`) |
+| Browser: hidden + locked labels | **PASS** (`Mannequin Male (hidden, locked)`) |
+| Test: two same-id models survive a scene round-trip | **PASS** |
+| Test: transform + duplicate + hidden restore on re-apply | **PASS** |
+| Test: double round-trip does not drift | **PASS** |
+| Test: colour override restores true original after two overrides | **PASS** |
+| Browser: save -> reload -> reopen restores 2 models incl. hidden | **UNVERIFIED** — see note |
+
+**Note on the unverified row.** The save/reload/reopen round-trip was verified
+only as far as: the saved scene persists across a reload and is listed under
+**Saved**, and the serialisation layer is proven by tests
+(`ObjectRoundTrip`, `ObjectSceneFlow`) covering two same-id models, the hidden
+and locked flags, and double-round-trip stability. The final browser click
+through to a two-model restore did not complete: this machine is running at
+~78% CPU across ~28 unrelated `node` processes, and every CDP command to the
+browser timed out (`Page.getFrameTree`, `Runtime.evaluate`,
+"operation exceeded its deadline"). The same browser session earlier in the
+run completed the same flows, so this is host contention rather than an app
+fault. It should be re-run once the machine is quiet.
+
 ## Milestone state
 
 | Milestone | State | Verification |

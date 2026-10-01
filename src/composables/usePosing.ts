@@ -57,6 +57,18 @@ import {
   sceneToJson,
   type SceneState,
 } from "../scene/Scene";
+import {
+  ObjectController,
+  clearObjectColor,
+  duplicateOffset,
+  isHidden,
+  isLocked,
+  readObjectState,
+  setHidden,
+  setLocked,
+  setObjectColor,
+  type ObjectGizmoMode,
+} from "../scene/ObjectState";
 import { History, historyShortcut } from "../scene/History";
 import { PREMADE_SCENES } from "../scene/PremadeScenes";
 import {
@@ -73,6 +85,15 @@ export interface PosedModel {
   config: CatalogEntry;
   skeleton: PosableSkeleton;
   root: THREE.Object3D;
+  /**
+   * Unique per loaded instance, not per catalogue entry.
+   *
+   * Duplicate (Shift+D) can put two copies of the same model in one scene, so
+   * config.id is not a valid identity: Vue would reuse one <li> for both and
+   * removing by config.id would take out both copies. This is what the Scene
+   * list keys on and what removeModel/deleteSelectedObject target.
+   */
+  instanceId: string;
 }
 
 export interface PlacedProp {
@@ -85,6 +106,19 @@ export interface ImagePlaneEntry {
   id: string;
   name: string;
   mesh: THREE.Mesh;
+}
+
+/**
+ * Monotonic instance counter for PosedModel.instanceId.
+ *
+ * Module scope on purpose: ids must stay unique across scene rebuilds inside
+ * one session, and a reload clears them along with everything else.
+ */
+let modelInstanceCounter = 0;
+
+function nextModelInstanceId(catalogId: string): string {
+  modelInstanceCounter += 1;
+  return `${catalogId}#${modelInstanceCounter}`;
 }
 
 /** Decode a `data:image/png;base64,...` URL into a Blob for download. */
@@ -108,11 +142,49 @@ export function usePosing() {
   const models = shallowRef<PosedModel[]>([]);
   const activeModelId = ref<string | null>(null);
   const selectedBone = ref<string | null>(null);
+  const selectedObjectId = ref<string | null>(null);
+  const objectGizmoMode = ref<ObjectGizmoMode>("translate");
   const mode = ref<InteractionMode>("fk");
   const status = ref("starting");
   const error = ref<string | null>(null);
   const boneNames = ref<string[]>([]);
   const loadingId = ref<string | null>(null);
+  const objectController = shallowRef<ObjectController | null>(null);
+  // Set while a gizmo drag is moving; consumed on drag end to push one history
+  // entry per drag rather than per frame.
+  const gizmoDirty = ref(false);
+  // Show/Lock are flags on three.js objects, which Vue cannot track, so the
+  // UI needs an explicit reactive mirror. Bumped after any change to make
+  // computeds that read Object3D.userData re-evaluate.
+  const objectStateVersion = ref(0);
+
+  function touchObjectState(): void {
+    objectStateVersion.value += 1;
+  }
+
+  /** Objects that can be picked: loaded model roots and placed prop roots. */
+  function selectableObjects(): { id: string; root: THREE.Object3D }[] {
+    // Reading the version makes this function a reactive dependency, so the
+    // object picker re-renders when Show/Lock change on a three.js object.
+    void objectStateVersion.value;
+    const out: { id: string; root: THREE.Object3D }[] = [];
+    // Keyed by instanceId, not index, so the selection survives a removal or a
+    // reorder instead of silently retargeting a different figure.
+    models.value.forEach((m) => out.push({ id: m.instanceId, root: m.root }));
+    props.value.forEach((p) => out.push({ id: p.id, root: p.root }));
+    return out;
+  }
+
+  /** Find the model or prop backing a selection id, and its root. */
+  function findSelectedObject(
+    id: string | null,
+  ): { root: THREE.Object3D; model?: PosedModel; prop?: PlacedProp } | null {
+    if (!id) return null;
+    const model = models.value.find((m) => m.instanceId === id);
+    if (model) return { root: model.root, model };
+    const prop = props.value.find((p) => p.id === id);
+    return prop ? { root: prop.root, prop } : null;
+  }
 
   async function attachModel(config: CatalogEntry): Promise<PosedModel> {
     const vp = viewport.value;
@@ -144,7 +216,12 @@ export function usePosing() {
       );
     }
 
-    const posed: PosedModel = { config, skeleton, root };
+    const posed: PosedModel = {
+      config,
+      skeleton,
+      root,
+      instanceId: nextModelInstanceId(config.id),
+    };
     models.value = [...models.value, posed];
     return posed;
   }
@@ -168,11 +245,20 @@ export function usePosing() {
 
   function removeModel(id: string): void {
     const vp = viewport.value;
-    const posed = models.value.find((m) => m.config.id === id);
+    // Accept either a catalogue id or an instance id. Duplicate puts several
+    // copies of one model in a scene, so callers that mean "this copy" pass the
+    // instance id; the old catalogue-id callers (Delete key, × on the first
+    // match) keep working.
+    const posed =
+      models.value.find((m) => m.instanceId === id) ??
+      models.value.find((m) => m.config.id === id);
     if (!posed || !vp) return;
     vp.scene.remove(posed.root);
-    models.value = models.value.filter((m) => m.config.id !== id);
+    models.value = models.value.filter((m) => m.instanceId !== posed.instanceId);
     if (activeModelId.value === id) setActive(null);
+    // Selection ids embed the model index, so a removal invalidates any
+    // object selection rather than silently pointing at the wrong figure.
+    selectObject(null);
     // Close the gap left by the removed model.
     models.value.forEach((m, i) => {
       m.root.position.x = i * 1.1;
@@ -275,8 +361,31 @@ export function usePosing() {
     vp.scene.add(pc.helper);
     controller.value = pc;
 
-    // Clip playback advances on the render loop's clock.
-    vp.onFrame = (delta) => updateClip(delta);
+    // Phase 1: a second gizmo for whole-object translate/rotate/scale. The
+    // bone gizmo above stays for FK joint rotation; the two never share a
+    // TransformControls instance because their spaces are incompatible.
+    const oc = new ObjectController(
+      vp.renderer.domElement,
+      vp.camera,
+      vp.controls,
+    );
+    // History is pushed on drag end, not per frame, so one drag is one undo.
+    oc.onChange = () => {
+      gizmoDirty.value = true;
+    };
+    vp.scene.add(oc.helper);
+    objectController.value = oc;
+
+    // Clip playback advances on the render loop's clock. The gizmo check turns
+    // a finished drag into exactly one history entry: objectChange fires on
+    // every frame of the drag, so we wait until dragging stops and commit once.
+    vp.onFrame = (delta) => {
+      updateClip(delta);
+      if (gizmoDirty.value && !objectController.value?.dragging) {
+        gizmoDirty.value = false;
+        commit();
+      }
+    };
     vp.start();
     status.value = "running";
 
@@ -291,8 +400,10 @@ export function usePosing() {
   }
 
   function dispose(): void {
+    objectController.value?.dispose();
     controller.value?.dispose();
     viewport.value?.dispose();
+    objectController.value = null;
     controller.value = null;
     viewport.value = null;
   }
@@ -641,6 +752,120 @@ export function usePosing() {
     if (placed) snapToFloor(placed.root);
   }
 
+  // ------------------------------------------- Phase 1: object-level operations
+
+  function setObjectGizmoMode(next: ObjectGizmoMode): void {
+    objectGizmoMode.value = next;
+    objectController.value?.setMode(next);
+  }
+
+  /**
+   * Select an object and attach the object gizmo to it.
+   *
+   * A locked object can be selected (so it can be unlocked again) but the
+   * gizmo refuses to attach, which is the enforcement point for Lock.
+   */
+  function selectObject(id: string | null): void {
+    selectedObjectId.value = id;
+    const found = findSelectedObject(id);
+    objectController.value?.attach(found ? found.root : null);
+    if (!id && found?.prop) selectedPropId.value = null;
+  }
+
+  /** Toggle Show on the selected object. */
+  function toggleObjectHidden(): void {
+    const found = findSelectedObject(selectedObjectId.value);
+    if (!found) return;
+    setHidden(found.root, !isHidden(found.root));
+    touchObjectState();
+    commit();
+  }
+
+  /** Toggle Lock on the selected object. */
+  function toggleObjectLocked(): void {
+    const found = findSelectedObject(selectedObjectId.value);
+    if (!found) return;
+    const next = !isLocked(found.root);
+    setLocked(found.root, next);
+    touchObjectState();
+    // Unlocking must re-attach the gizmo or the object stays inert until the
+    // artist clicks it again.
+    if (!next) objectController.value?.attach(found.root);
+    else objectController.value?.detach();
+    commit();
+  }
+
+  /** Recolor the selected object. Passing null clears the override. */
+  function setSelectedObjectColor(color: string | null): void {
+    const found = findSelectedObject(selectedObjectId.value);
+    if (!found) return;
+    if (color) setObjectColor(found.root, color);
+    else clearObjectColor(found.root);
+    touchObjectState();
+    commit();
+  }
+
+  /**
+   * Duplicate the selected model, including its current pose.
+   *
+   * A SkinnedMesh cannot share one Skeleton instance with a second hierarchy
+   * without cross-driving bones, so the duplicate gets its own PosableSkeleton
+   * and the source pose is copied onto it. Props duplicate as a plain clone.
+   */
+  function duplicateSelectedObject(): void {
+    const vp = viewport.value;
+    const found = findSelectedObject(selectedObjectId.value);
+    if (!vp || !found) return;
+
+    if (found.prop) {
+      const clone = found.prop.root.clone(true);
+      clone.position.x += duplicateOffset(found.prop.root);
+      vp.scene.add(clone);
+      props.value = [
+        ...props.value,
+        {
+          id: `${found.prop.config.id}_${props.value.length}`,
+          config: found.prop.config,
+          root: clone,
+        },
+      ];
+      commit();
+      return;
+    }
+
+    if (!found.model) return;
+    const source = found.model;
+    const cloneRoot = objectController.value
+      ? objectController.value.duplicateObject(source.root, duplicateOffset(source.root))
+      : source.root.clone(true);
+    vp.scene.add(cloneRoot);
+
+    const skeleton = new PosableSkeleton(cloneRoot, source.config, {
+      requireHands: false,
+    });
+    // Copy the pose so the duplicate is visibly a second *posed* instance.
+    skeleton.applyPose(source.skeleton.getPose(), 0);
+    models.value = [
+      ...models.value,
+      {
+        config: source.config,
+        skeleton,
+        root: cloneRoot,
+        instanceId: nextModelInstanceId(source.config.id),
+      },
+    ];
+    commit();
+  }
+
+  /** Delete the selected object, model or prop. */
+  function deleteSelectedObject(): void {
+    const found = findSelectedObject(selectedObjectId.value);
+    if (!found) return;
+    if (found.prop) removeProp(found.prop.id);
+    else if (found.model) removeModel(found.model.instanceId);
+    selectObject(null);
+  }
+
   /**
    * Place a prop at a figure contact point, snapped to the floor. This is what
    * makes "sitting on the chair" work without hand placement.
@@ -730,26 +955,32 @@ export function usePosing() {
       models: models.value.map((m) => ({
         id: m.config.id,
         pose: m.skeleton.getPose(),
-        position: [m.root.position.x, m.root.position.y, m.root.position.z],
-        rotation: [
-          m.root.quaternion.x,
-          m.root.quaternion.y,
-          m.root.quaternion.z,
-          m.root.quaternion.w,
-        ],
-        scale: m.root.scale.x,
+        transform: {
+          position: [m.root.position.x, m.root.position.y, m.root.position.z],
+          rotation: [
+            m.root.quaternion.x,
+            m.root.quaternion.y,
+            m.root.quaternion.z,
+            m.root.quaternion.w,
+          ],
+          scale: [m.root.scale.x, m.root.scale.y, m.root.scale.z],
+        },
+        state: readObjectState(m.root),
       })),
       props: props.value.map((p) => ({
         id: p.config.procedural ?? null,
         name: p.config.name,
-        position: [p.root.position.x, p.root.position.y, p.root.position.z],
-        rotation: [
-          p.root.quaternion.x,
-          p.root.quaternion.y,
-          p.root.quaternion.z,
-          p.root.quaternion.w,
-        ],
-        scale: [p.root.scale.x, p.root.scale.y, p.root.scale.z],
+        transform: {
+          position: [p.root.position.x, p.root.position.y, p.root.position.z],
+          rotation: [
+            p.root.quaternion.x,
+            p.root.quaternion.y,
+            p.root.quaternion.z,
+            p.root.quaternion.w,
+          ],
+          scale: [p.root.scale.x, p.root.scale.y, p.root.scale.z],
+        },
+        state: readObjectState(p.root),
       })),
       camera: vp
         ? {
@@ -807,6 +1038,8 @@ export function usePosing() {
     props.value = [];
     imagePlanes.value = [];
     selectedPropId.value = null;
+    selectObject(null);
+    touchObjectState();
 
     sceneName.value = state.name || "Untitled";
     const missing: string[] = [];
@@ -819,16 +1052,30 @@ export function usePosing() {
       }
       try {
         const built = await loadModel(config, { renderer: vp.renderer });
-        built.root.position.fromArray(spec.position);
-        built.root.quaternion.fromArray(spec.rotation);
-        built.root.scale.setScalar(spec.scale || 1);
+        built.root.position.fromArray(spec.transform.position);
+        built.root.quaternion.fromArray(spec.transform.rotation);
+        built.root.scale.fromArray(spec.transform.scale);
         vp.scene.add(built.root);
+
+        // Show/Lock/Colour restore before the skeleton binds so a hidden
+        // figure is never briefly rendered at full opacity on load.
+        if (spec.state?.hidden) setHidden(built.root, true);
+        if (spec.state?.locked) setLocked(built.root, true);
+        if (spec.state?.color) setObjectColor(built.root, spec.state.color);
 
         const skeleton = new PosableSkeleton(built.root, config, {
           requireHands: false,
         });
         skeleton.applyPose(spec.pose, spec.rootOffset);
-        models.value = [...models.value, { config, skeleton, root: built.root }];
+        models.value = [
+          ...models.value,
+          {
+            config,
+            skeleton,
+            root: built.root,
+            instanceId: nextModelInstanceId(config.id),
+          },
+        ];
       } catch (err) {
         // Surface why a model failed rather than only reporting it missing:
         // a silently empty scene is the hardest kind of bug to diagnose.
@@ -843,9 +1090,12 @@ export function usePosing() {
         continue;
       }
       const root = buildProp(config.procedural!);
-      root.position.fromArray(spec.position);
-      root.quaternion.fromArray(spec.rotation);
-      root.scale.fromArray(spec.scale ?? [1, 1, 1]);
+      root.position.fromArray(spec.transform.position);
+      root.quaternion.fromArray(spec.transform.rotation);
+      root.scale.fromArray(spec.transform.scale);
+      if (spec.state?.hidden) setHidden(root, true);
+      if (spec.state?.locked) setLocked(root, true);
+      if (spec.state?.color) setObjectColor(root, spec.state.color);
       vp.scene.add(root);
       props.value = [
         ...props.value,
@@ -1056,6 +1306,24 @@ export function usePosing() {
       case "resetPose":
         if (activeModelId.value) resetPose();
         break;
+      case "gizmoTranslate":
+        setObjectGizmoMode("translate");
+        break;
+      case "gizmoRotate":
+        setObjectGizmoMode("rotate");
+        break;
+      case "gizmoScale":
+        setObjectGizmoMode("scale");
+        break;
+      case "duplicateObject":
+        duplicateSelectedObject();
+        break;
+      case "toggleHidden":
+        toggleObjectHidden();
+        break;
+      case "toggleLock":
+        toggleObjectLocked();
+        break;
       case "toggleFavorites":
         toggleFavoritesFilter();
         break;
@@ -1084,6 +1352,8 @@ export function usePosing() {
     models,
     activeModelId,
     selectedBone,
+    selectedObjectId,
+    objectGizmoMode,
     boneNames,
     loadingId,
     hasRemoteModels,
@@ -1102,6 +1372,14 @@ export function usePosing() {
     attachModel,
     setActive,
     selectBone,
+    selectObject,
+    setObjectGizmoMode,
+    duplicateSelectedObject,
+    toggleObjectHidden,
+    toggleObjectLocked,
+    setSelectedObjectColor,
+    selectableObjects,
+    deleteSelectedObject,
     setMode,
     removeModel,
     resetPose,

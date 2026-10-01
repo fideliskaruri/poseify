@@ -364,15 +364,19 @@ function buildScene(spec: SceneSpec): PremadeScene {
       id: m.id,
       pose: pose(m.pose),
       rootOffset: poseRootOffset(m.pose),
-      position: [m.x ?? 0, 0, 0],
-      rotation: [0, 0, 0, 1],
-      scale: 1,
+      transform: {
+        position: [m.x ?? 0, 0, 0],
+        rotation: [0, 0, 0, 1],
+        scale: [1, 1, 1],
+      },
     })),
     props: (spec.props ?? []).map((p) => ({
       id: p.id,
-      position: [p.x, 0, p.z ?? 0],
-      rotation: [0, 0, 0, 1],
-      scale: [1, 1, 1],
+      transform: {
+        position: [p.x, 0, p.z ?? 0],
+        rotation: [0, 0, 0, 1],
+        scale: [1, 1, 1],
+      },
     })),
     camera: {
       position: spec.camera.position,

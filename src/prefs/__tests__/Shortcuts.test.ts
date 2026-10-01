@@ -33,6 +33,37 @@ function field(tag: string): KeyboardEvent {
 }
 
 describe("resolveShortcut", () => {
+  it("maps the Phase 1 object gizmo shortcuts", () => {
+    expect(resolveShortcut(key("g"))).toBe("gizmoTranslate");
+    expect(resolveShortcut(key("s"))).toBe("gizmoScale");
+    expect(resolveShortcut(key("l"))).toBe("toggleLock");
+  });
+
+  it("keeps R as reset pose and puts object rotate on Shift+R", () => {
+    // R was already bound to resetPose, so object rotation takes the modified
+    // key. If these ever collide, the bare key would silently win.
+    expect(resolveShortcut(key("r"))).toBe("resetPose");
+    expect(resolveShortcut(key("r", { shiftKey: true }))).toBe("gizmoRotate");
+  });
+
+  it("keeps H as frame scene and puts hide on Shift+H", () => {
+    expect(resolveShortcut(key("h"))).toBe("frameScene");
+    expect(resolveShortcut(key("h", { shiftKey: true }))).toBe("toggleHidden");
+  });
+
+  it("maps duplicate on Shift+D and never on bare D", () => {
+    expect(resolveShortcut(key("d", { shiftKey: true }))).toBe("duplicateObject");
+    expect(resolveShortcut(key("d"))).toBeNull();
+  });
+
+  it("does not let the object shortcuts shadow browser chords", () => {
+    // Ctrl+G and Ctrl+R belong to the browser; a bare-key match would swallow
+    // them, which is exactly the failure the modifier check exists to stop.
+    expect(resolveShortcut(key("g", { ctrlKey: true }))).toBeNull();
+    expect(resolveShortcut(key("r", { ctrlKey: true }))).toBeNull();
+    expect(resolveShortcut(key("s", { ctrlKey: true }))).toBeNull();
+  });
+
   it("maps undo and redo", () => {
     expect(resolveShortcut(key("z", { ctrlKey: true }))).toBe("undo");
     expect(resolveShortcut(key("Z", { metaKey: true }))).toBe("undo");

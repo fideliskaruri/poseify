@@ -10,24 +10,42 @@ import type { GridState, LightState } from "./SceneEnvironment";
 
 export const SCENE_FORMAT_VERSION = 1;
 
+// Per-object transform, kept apart from the pose record. The pose is joint
+// rotations; this is where the whole figure sits in the world. Phase 1 moved
+// scale from a bare number to a full vec3 so a figure can be stretched, and
+// added the object-level flags PoseMy.Art exposes as Show/Lock/Color.
+export interface ObjectTransform {
+  position: [number, number, number];
+  rotation: [number, number, number, number];
+  scale: [number, number, number];
+}
+
+// Object-level presentation and edit state. These belong with the object, not
+// the pose: hiding a figure must survive save/load without touching its bones.
+export interface ObjectState {
+  hidden?: boolean;
+  locked?: boolean;
+  // Hex colour applied to the model's materials, or undefined for the
+  // material's own colour.
+  color?: string;
+}
+
 export interface SceneModel {
   // Catalogue id of the model, so a reload can find the asset again.
   id: string;
   pose: PoseData;
   // Root drop in metres, for seated and kneeling poses.
   rootOffset?: [number, number, number];
-  position: [number, number, number];
-  rotation: [number, number, number, number];
-  scale: number;
+  transform: ObjectTransform;
+  state?: ObjectState;
 }
 
 export interface SceneProp {
   // Catalogue id for built-in props, or null for an imported asset.
   id: string | null;
   name?: string;
-  position: [number, number, number];
-  rotation: [number, number, number, number];
-  scale: [number, number, number];
+  transform: ObjectTransform;
+  state?: ObjectState;
   // URL for an imported asset; built-in props omit this.
   path?: string;
 }
@@ -102,6 +120,52 @@ function quat(
 }
 
 /**
+ * Read a transform from either the v2 shape (nested `transform`) or the v1
+ * shape (flat `position`/`rotation`/`scale` fields).
+ *
+ * v1 stored models with a scalar `scale` and props with a vec3. Both are
+ * accepted here so a scene saved by an earlier build still opens, which
+ * matters because scenes live in localStorage and in hand-shared files.
+ */
+function objectTransform(
+  raw: unknown,
+  legacyScale: [number, number, number],
+): ObjectTransform {
+  const outer = (raw ?? {}) as Partial<ObjectTransform> & {
+    position?: unknown;
+    rotation?: unknown;
+    scale?: unknown;
+  };
+  // v2 nests the transform; v1 kept position/rotation/scale flat on the
+  // object. Prefer the nested form and fall back to the flat one, so scenes
+  // saved by either build open.
+  const source = (
+    outer.transform ?? outer
+  ) as Partial<ObjectTransform> & { scale?: unknown };
+  // A v1 model wrote a bare number; v1 props and v2 both write a vec3.
+  const scale = isFiniteNumber(source.scale)
+    ? [source.scale, source.scale, source.scale]
+    : vec3(source.scale, legacyScale);
+
+  return {
+    position: vec3(source.position, [0, 0, 0]),
+    rotation: quat(source.rotation, [0, 0, 0, 1]),
+    scale: vec3(scale, [1, 1, 1]),
+  };
+}
+
+function objectState(raw: unknown): ObjectState | undefined {
+  const source = (raw ?? {}) as Partial<ObjectState>;
+  const state: ObjectState = {};
+  if (source.hidden === true) state.hidden = true;
+  if (source.locked === true) state.locked = true;
+  if (typeof source.color === "string" && /^#[0-9a-f]{6}$/i.test(source.color)) {
+    state.color = source.color.toLowerCase();
+  }
+  return Object.keys(state).length > 0 ? state : undefined;
+}
+
+/**
  * Parse scene JSON, repairing anything malformed rather than throwing.
  *
  * Scene files are hand-editable and arrive from downloads, so a partially
@@ -121,30 +185,32 @@ export function parseScene(text: string): SceneState | null {
     const models: SceneModel[] = [];
     for (const m of raw.models) {
       if (!m || typeof m.id !== "string") continue;
-      models.push({
+      const model: SceneModel = {
         id: m.id,
         pose: m.pose && typeof m.pose === "object" ? (m.pose as PoseData) : {},
         rootOffset:
           Array.isArray(m.rootOffset) && m.rootOffset.length === 3
             ? vec3(m.rootOffset, [0, 0, 0])
             : undefined,
-        position: vec3(m.position, [0, 0, 0]),
-        rotation: quat(m.rotation, [0, 0, 0, 1]),
-        scale: isFiniteNumber(m.scale) && m.scale !== 0 ? m.scale : 1,
-      });
+        transform: objectTransform(m, [1, 1, 1]),
+      };
+      const state = objectState(m.state);
+      if (state) model.state = state;
+      models.push(model);
     }
 
     const props: SceneProp[] = [];
     for (const p of raw.props ?? []) {
       if (!p) continue;
-      props.push({
+      const prop: SceneProp = {
         id: typeof p.id === "string" ? p.id : null,
         name: typeof p.name === "string" ? p.name : undefined,
-        position: vec3(p.position, [0, 0, 0]),
-        rotation: quat(p.rotation, [0, 0, 0, 1]),
-        scale: vec3(p.scale, [1, 1, 1]),
+        transform: objectTransform(p, [1, 1, 1]),
         path: typeof p.path === "string" ? p.path : undefined,
-      });
+      };
+      const state = objectState(p.state);
+      if (state) prop.state = state;
+      props.push(prop);
     }
 
     const cam = raw.camera as SceneCamera | undefined;
