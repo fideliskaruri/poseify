@@ -117,7 +117,7 @@ Legend for the last column: `test` = asserted in `npm test`,
 | Premade scenes | 28 pages / 5500+ claimed | 48 | 268 | 7 | test + browser |
 | Animations | 32 pages / 2400+ claimed | 130 clips | out of scope for v2 | - | n/a |
 | Props | 26 pages | 9 | TODO (characterful) | 7 | test |
-| Models | 54 | 33 (vendor FBX, gitignored) | TODO licence-clean path | 4b | browser |
+| Models | 54 | 33 (vendor FBX, gitignored) | 39 incl. 6 procedural MIT-clean | 4b | test + browser |
 | Category taxonomy | 563 | 10 tags | 35 tags | 7 | browser |
 | Hand poses | dedicated library | none | 18 (9 x 2 sides) | 5 | test + browser |
 

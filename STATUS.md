@@ -26,11 +26,11 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | Phase | State | Verification |
 |---|---|---|
 | P0 — parity table | **PASS** | `research/PARITY.md` written; one row per GAP-ANALYSIS §2 capability across all nine subsections, each `Poseify (after)` cell a real value or explicit `TODO`, plus recorded scope decisions for animations, language and model count |
-| P1 — object transform + object ops | **PARTIAL** | all six features browser-verified; save/reload round-trip click-through still unverified (test-covered) |
+| P1 — object transform + object ops | **PARTIAL** | all six features browser-verified; save/reload click-through still unverified (test-covered) |
 | P2 — pose surgery | **PASS** | Surgery panel renders; limb isolation and inverse asserted on quaternions |
 | P3 — export completeness | **PASS** | all four items built; with/without hands and Preview Depth browser-verified; scene OBJ test-verified (download bytes unreadable in this browser) |
 | P4a — camera | **PASS** | lock/reset/presets/screenshot built; preset persistence and lock verified in-browser |
-| P4b — licence-clean model path | **PASS** | 6 procedural MIT-clean figures; 501 tests; browser check pending on this host |
+| P4b — licence-clean model path | **PASS** | 6 procedural MIT-clean figures, leading the picker; browser-verified |
 | P5 — hand posing | **PASS** | 9 poses x 2 sides, independent payload, 1e-12 body-independence asserted |
 | P6 — joint groups + anchors | **PASS** | cycle rejection verified in-browser; groups and anchors survive reload |
 | P7 — content generation | **PASS** | 98 -> 1,298 poses, 48 -> 268 scenes, all validated |
@@ -104,6 +104,51 @@ browser timed out (`Page.getFrameTree`, `Runtime.evaluate`,
 "operation exceeded its deadline"). The same browser session earlier in the
 run completed the same flows, so this is host contention rather than an app
 fault. It should be re-run once the machine is quiet.
+
+### Phase 4b detail
+
+The licence-clean model path. Six figures generated from the rig contract at
+runtime, exactly like the prop set, so they are MIT-clean by construction:
+there is no third-party asset to license, because there is no third-party
+asset.
+
+| Check | Result |
+|---|---|
+| `npm test` | **508 passed / 508** (was 490) |
+| Test: every figure binds all 62 contract bones | **PASS** |
+| Test: every vertex sums to one bone weight | **PASS** |
+| Test: figures vary in height and build, not just scale | **PASS** |
+| Test: figures stand on the floor, not through it | **PASS** |
+| Test: a figure poses and the rotation actually takes | **PASS** |
+| Test: catalogue leads with procedural, no file needed | **PASS** |
+| Browser: 39 tiles, six procedural leading | **PASS** |
+| Browser: all six show rendered thumbnails | **PASS** |
+| Browser: Figure Stout loads, poses and deforms | **PASS** |
+
+Three bugs found here, all of the same shape — a check that passed while the
+feature was visibly broken:
+
+1. **The catalogue edit landed only its import.** `MODEL_CATALOG` was still
+   vendor-only and `loadModel` still threw for anything without a path, so six
+   figures the picker could not offer were a feature that did not exist. A new
+   `CatalogueMix` test caught it by asserting the first catalogue entry is
+   procedural.
+2. **`skinIndex` was a 4-component attribute with one index pushed per
+   vertex.** The renderer read past the end of the array and got a garbage
+   bone index, which surfaces deep inside `applyBoneTransform` as a null
+   `matrixWorld` - and as an empty tile rather than an error the picker could
+   show. `skinWeight` had the same shape problem.
+3. **The figure posed correctly throughout**, because posing writes bone
+   quaternions directly and never runs the skinning path. Every test passed
+   while every thumbnail was empty.
+
+The regression test now drives `getVertexPosition` over every vertex - the same
+path a raycast or an edit takes, and it needs no GL context - so a malformed
+skinning attribute is caught by `npm test` rather than by noticing empty tiles.
+
+Two existing catalogue tests encoded the old vendor-only world and were updated
+rather than deleted: the vendor half still asserts every vendor path is under
+`VENDOR_BASE`, and the duplicate-path check now ignores models that have no path.
 
 ### Phase 7 detail
 
