@@ -98,6 +98,41 @@ export const RIG_PARENTS: Readonly<Record<string, string | null>> = {
   RightToeBase: "RightFoot",
 };
 
+/**
+ * Finger chains, appended to the body parent map.
+ *
+ * The 42 hand bones are already part of the contract (HAND_BONES) and the IK
+ * chains treat the wrist as an arm-chain member, but the parent map stopped at
+ * the wrist. Anything that walks the hierarchy to find a limb - per-limb pose
+ * mirroring in particular - therefore could not see past LeftHand/RightHand,
+ * so a mirrored arm silently dropped its fingers.
+ *
+ * Kept separate from RIG_PARENTS so the body map stays exactly the 22 entries
+ * FINDINGS.md documents; this is merged only where the full hierarchy is
+ * wanted.
+ */
+export const HAND_PARENTS: Readonly<Record<string, string>> = (() => {
+  const out: Record<string, string> = {};
+  for (const side of HAND_SIDES) {
+    const hand = `${side}Hand`;
+    for (const finger of FINGER_NAMES) {
+      let parent = hand;
+      for (let n = 1; n <= 4; n += 1) {
+        const bone = `${hand}${finger}${n}`;
+        out[bone] = parent;
+        parent = bone;
+      }
+    }
+  }
+  return out;
+})();
+
+/** The complete hierarchy: 22 body bones plus the 40 finger bones. */
+export const FULL_PARENTS: Readonly<Record<string, string | null>> = {
+  ...RIG_PARENTS,
+  ...HAND_PARENTS,
+};
+
 export interface ValidationResult {
   ok: boolean;
   missing: string[];

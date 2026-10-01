@@ -33,6 +33,16 @@ const {
   setMode,
   removeModel,
   resetPose,
+  resetSelectedJoint,
+  mirrorArmLimb,
+  mirrorLegLimb,
+  switchPoseSides,
+  copyPose,
+  pastePose,
+  toggleInPlace,
+  inPlace,
+  applyRandomPose,
+  clipboardStatus,
   thumbnails,
   loadThumbnails,
   loadingId,
@@ -512,6 +522,80 @@ watch(
           Reset pose
         </button>
         <p v-if="poseError" class="hint warn">{{ poseError }}</p>
+
+        <h3 class="sub">Surgery</h3>
+        <div class="row wrap">
+          <button
+            type="button"
+            class="chip"
+            :disabled="!selectedBone"
+            title="Restore the selected joint to bind, leaving the rest of the pose alone"
+            @click="resetSelectedJoint()"
+          >
+            Reset joint
+          </button>
+          <button
+            type="button"
+            class="chip"
+            title="Mirror only the arm chain"
+            @click="mirrorArmLimb()"
+          >
+            Mirror arms
+          </button>
+          <button
+            type="button"
+            class="chip"
+            title="Mirror only the leg chain"
+            @click="mirrorLegLimb()"
+          >
+            Mirror legs
+          </button>
+          <button
+            type="button"
+            class="chip"
+            title="Switch Pose Sides — mirror the whole body"
+            @click="switchPoseSides()"
+          >
+            Switch sides
+          </button>
+        </div>
+
+        <div class="row wrap">
+          <button
+            type="button"
+            class="chip"
+            title="Copy the current pose to the clipboard"
+            @click="copyPose()"
+          >
+            Copy pose
+          </button>
+          <button
+            type="button"
+            class="chip"
+            title="Paste the clipboard pose onto this model"
+            @click="pastePose()"
+          >
+            Paste pose
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: inPlace }"
+            title="Apply poses without their root drop, so the figure stays put"
+            @click="toggleInPlace()"
+          >
+            In place
+          </button>
+          <button
+            type="button"
+            class="chip"
+            title="Apply a random pose from the current filter"
+            @click="applyRandomPose()"
+          >
+            Random
+          </button>
+        </div>
+        <p v-if="clipboardStatus" class="hint">{{ clipboardStatus }}</p>
 
         <label class="field">
           <span>Search poses</span>

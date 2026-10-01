@@ -13,6 +13,8 @@ export type ShortcutAction =
   | "duplicateObject"
   | "toggleHidden"
   | "toggleLock"
+  | "switchPoseSides"
+  | "resetJoint"
   | "toggleFavorites"
   | "openSettings"
   | "togglePlayback"
@@ -44,6 +46,10 @@ const CHARTS: readonly Chord[] = [
   { action: "duplicateObject", key: "d", shift: true },
   { action: "toggleHidden", key: "h", shift: true },
   { action: "toggleLock", key: "l" },
+  // Switch Pose Sides is f/x on PoseMy.Art. F is already the favourites
+  // filter here, so the flip binds to X and F stays put.
+  { action: "switchPoseSides", key: "x" },
+  { action: "resetJoint", key: "r", alt: true },
   { action: "toggleFavorites", key: "f" },
   { action: "openSettings", key: "," , ctrl: true },
   { action: "togglePlayback", key: " " },
@@ -92,6 +98,8 @@ export const SHORTCUT_HELP: readonly { keys: string; label: string }[] = [
   { keys: "Shift + D", label: "Duplicate the selected object" },
   { keys: "Shift + H", label: "Show / hide the selected object" },
   { keys: "L", label: "Lock / unlock the selected object" },
+  { keys: "X", label: "Switch Pose Sides (mirror the whole body)" },
+  { keys: "Alt + R", label: "Reset the selected joint only" },
   { keys: "F", label: "Show only favourited models" },
   { keys: "Space", label: "Play / pause the animation clip" },
   { keys: "H", label: "Frame the scene in the viewport" },

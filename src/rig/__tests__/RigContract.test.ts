@@ -4,9 +4,12 @@ import {
   ALL_BONES,
   BODY_BONES,
   CORE_BONES,
+  FULL_PARENTS,
   HAND_BONES,
+  HAND_PARENTS,
   HIP_BONE,
   isHandBone,
+  RIG_PARENTS,
   validateSkeleton,
 } from "../RigContract";
 import { buildSkeletonFixture, fixtureBoneNames } from "./fixtures";
@@ -109,5 +112,52 @@ describe("validateSkeleton — M1 acceptance", () => {
     // The body fixture has the two wrist bones but none of the 40 finger
     // bones, so 40 of the 62 required names are absent.
     expect(result.missing).toHaveLength(40);
+  });
+
+  describe("finger hierarchy", () => {
+    it("chains every finger from the wrist outwards", () => {
+      for (const side of ["Left", "Right"]) {
+        for (const finger of ["Index", "Middle", "Ring", "Pinky", "Thumb"]) {
+          expect(HAND_PARENTS[`${side}Hand${finger}1`]).toBe(`${side}Hand`);
+          expect(HAND_PARENTS[`${side}Hand${finger}2`]).toBe(
+            `${side}Hand${finger}1`,
+          );
+          expect(HAND_PARENTS[`${side}Hand${finger}3`]).toBe(
+            `${side}Hand${finger}2`,
+          );
+          expect(HAND_PARENTS[`${side}Hand${finger}4`]).toBe(
+            `${side}Hand${finger}3`,
+          );
+        }
+      }
+    });
+
+    it("covers all 40 finger bones and no wrists", () => {
+      expect(Object.keys(HAND_PARENTS)).toHaveLength(40);
+      expect(Object.keys(HAND_PARENTS)).not.toContain("LeftHand");
+      expect(Object.keys(HAND_PARENTS)).not.toContain("RightHand");
+    });
+
+    it("leaves the documented 22-bone body map untouched", () => {
+      // RIG_PARENTS is quoted in FINDINGS.md, so adding finger entries there
+      // would silently change the documented contract. They live in
+      // HAND_PARENTS and are merged only via FULL_PARENTS.
+      // 20 body bones plus the two wrists, which the map also has to carry so
+      // the hand chains have somewhere to hang.
+      expect(Object.keys(RIG_PARENTS)).toHaveLength(CORE_BONES.length);
+      expect(Object.keys(FULL_PARENTS)).toHaveLength(
+        CORE_BONES.length + 40,
+      );
+    });
+
+    it("resolves every contract bone through FULL_PARENTS except the root", () => {
+      for (const bone of ALL_BONES) {
+        if (bone === HIP_BONE) {
+          expect(FULL_PARENTS[bone]).toBeNull();
+          continue;
+        }
+        expect(FULL_PARENTS[bone]).toBeDefined();
+      }
+    });
   });
 });

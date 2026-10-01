@@ -23,6 +23,11 @@ import {
   type ExportResult,
 } from "../export/Exporter";
 import { POSE_LIBRARY } from "../pose/PoseLibrary";
+import { PoseClipboard, randomPoseIndex } from "../pose/PoseClipboard";
+import {
+  mirrorLimb,
+  mirrorPose,
+} from "../pose/PoseAuthoring";
 import {
   collectTags,
   filterPoses,
@@ -272,6 +277,151 @@ export function usePosing() {
     posed?.skeleton.resetPose();
   }
 
+  // ------------------------------------------- Phase 2: pose surgery
+
+  const clipboard = new PoseClipboard();
+  const clipboardStatus = ref<string | null>(null);
+
+  /** The active model's skeleton, or null when nothing is selected. */
+  function activeSkeleton(): PosableSkeleton | null {
+    return (
+      models.value.find((m) => m.config.id === activeModelId.value)?.skeleton ??
+      null
+    );
+  }
+
+  /**
+   * Reset one joint to its bind rotation, leaving the rest of the pose alone.
+   *
+   * This is the "fix one bad elbow without re-picking the pose" case. The
+   * other 21 bones must come back bit-identical, so it reads the pose before
+   * and after rather than re-applying a filtered copy.
+   */
+  function resetSelectedJoint(): void {
+    const skeleton = activeSkeleton();
+    if (!skeleton) return;
+    const bone = selectedBone.value;
+    if (!bone) {
+      poseError.value = "Select a joint first.";
+      return;
+    }
+    skeleton.resetBone(bone);
+    poseError.value = null;
+    commit();
+  }
+
+  /**
+   * Apply a pose operation to the active model and record it.
+   *
+   * Every pose-surgery action goes through here so undo captures the result
+   * once, rather than each action remembering to push history.
+   */
+  function mutateActivePose(
+    mutate: (skeleton: PosableSkeleton) => void,
+    okMessage: string,
+  ): void {
+    const skeleton = activeSkeleton();
+    if (!skeleton) {
+      poseError.value = "Add and select a model first.";
+      return;
+    }
+    mutate(skeleton);
+    poseError.value = null;
+    clipboardStatus.value = okMessage;
+    commit();
+  }
+
+  /** Mirror only the arm chain, across the sagittal plane. */
+  function mirrorArmLimb(): void {
+    mutateActivePose((skeleton) => {
+      skeleton.applyPose(mirrorLimb(skeleton.getPose(), "arm"));
+    }, "Arms mirrored");
+  }
+
+  /** Mirror only the leg chain, across the sagittal plane. */
+  function mirrorLegLimb(): void {
+    mutateActivePose((skeleton) => {
+      skeleton.applyPose(mirrorLimb(skeleton.getPose(), "leg"));
+    }, "Legs mirrored");
+  }
+
+  /**
+   * Switch Pose Sides — the existing whole-body mirror, exposed.
+   *
+   * mirrorPose already existed and was tested but unreachable from the UI, so
+   * this only adds the call site rather than a second implementation.
+   */
+  function switchPoseSides(): void {
+    mutateActivePose((skeleton) => {
+      skeleton.applyPose(mirrorPose(skeleton.getPose()));
+    }, "Pose sides switched");
+  }
+
+  function copyPose(): void {
+    const skeleton = activeSkeleton();
+    if (!skeleton) {
+      poseError.value = "Add and select a model first.";
+      return;
+    }
+    const pose = skeleton.getPose();
+    const ok = clipboard.copy(pose, activeModelId.value ?? "pose");
+    clipboardStatus.value = ok
+      ? `Copied ${Object.keys(pose).length} bones`
+      : "Could not copy an empty pose";
+  }
+
+  function pastePose(): void {
+    const held = clipboard.paste();
+    if (!held) {
+      poseError.value = "The pose clipboard is empty.";
+      return;
+    }
+    mutateActivePose(
+      (skeleton) => skeleton.applyPose(held),
+      `Pasted ${Object.keys(held).length} bones`,
+    );
+  }
+
+  /**
+   * Apply a pose without its rootOffset, keeping the figure where the artist
+   * put it.
+   *
+   * Seated and kneeling poses carry a root drop so the figure lands on a
+   * chair. Applying one of those to a figure the artist has already placed
+   * would teleport it, which is what In Place avoids.
+   */
+  function toggleInPlace(): boolean {
+    const skeleton = activeSkeleton();
+    if (!skeleton) return false;
+    inPlace.value = !inPlace.value;
+    // Re-apply immediately so the toggle has a visible effect rather than
+    // waiting for the next pose selection.
+    const pose = lastPose.value;
+    if (pose) {
+      mutateActivePose(
+        (s) => s.applyPose(pose, inPlace.value ? undefined : pose.rootOffset),
+        inPlace.value ? "Applied in place" : "Applied with root offset",
+      );
+    }
+    return inPlace.value;
+  }
+
+  /** Pick a pose at random from the current filtered set. */
+  function applyRandomPose(): void {
+    const pool = visiblePoses.value;
+    if (pool.length === 0) {
+      poseError.value = "No poses match the current filter.";
+      return;
+    }
+    // A seed derived from the current filter and time gives a different pick
+    // per press while staying reproducible for a test.
+    const seed = (randomSeedCounter += 1) + pool.length * 7919;
+    const pick = pool[randomPoseIndex(pool.length, seed)];
+    if (pick) applyPose(pick);
+  }
+
+  let randomSeedCounter = 0;
+
   const thumbnails = ref<Record<string, string>>({});
 
   async function loadThumbnails(): Promise<void> {
@@ -517,6 +667,12 @@ export function usePosing() {
   const appliedPoseId = ref<string | null>(null);
   const poseError = ref<string | null>(null);
   const poseThumbs = ref<Record<string, string>>({});
+  // Phase 2: apply a pose without its rootOffset, for figures the artist has
+  // already positioned by hand.
+  const inPlace = ref(false);
+  // The last library pose applied, so In Place can re-apply it with or without
+  // its root drop rather than needing the artist to re-pick it.
+  const lastPose = shallowRef<Pose | null>(null);
 
   const allPoseTags = collectTags(POSE_LIBRARY);
 
@@ -559,8 +715,11 @@ export function usePosing() {
       return false;
     }
 
-    active.skeleton.applyPose(pose.bones, pose.rootOffset);
+    // In Place drops the root offset so a seated or kneeling pose does not
+    // teleport a figure the artist has already positioned.
+    active.skeleton.applyPose(pose.bones, inPlace.value ? undefined : pose.rootOffset);
     appliedPoseId.value = pose.id;
+    lastPose.value = pose;
     poseError.value = null;
     commit();
     return true;
@@ -1324,6 +1483,12 @@ export function usePosing() {
       case "toggleLock":
         toggleObjectLocked();
         break;
+      case "switchPoseSides":
+        switchPoseSides();
+        break;
+      case "resetJoint":
+        resetSelectedJoint();
+        break;
       case "toggleFavorites":
         toggleFavoritesFilter();
         break;
@@ -1383,6 +1548,16 @@ export function usePosing() {
     setMode,
     removeModel,
     resetPose,
+    resetSelectedJoint,
+    mirrorArmLimb,
+    mirrorLegLimb,
+    switchPoseSides,
+    copyPose,
+    pastePose,
+    toggleInPlace,
+    inPlace,
+    applyRandomPose,
+    clipboardStatus,
     loadThumbnails,
     frameScene,
     RENDER_PASSES,

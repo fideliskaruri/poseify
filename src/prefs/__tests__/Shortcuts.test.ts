@@ -56,6 +56,21 @@ describe("resolveShortcut", () => {
     expect(resolveShortcut(key("d"))).toBeNull();
   });
 
+  it("maps Switch Pose Sides on X and keeps F for favourites", () => {
+    expect(resolveShortcut(key("x"))).toBe("switchPoseSides");
+    expect(resolveShortcut(key("f"))).toBe("toggleFavorites");
+  });
+
+  it("maps reset-joint on Alt+R and keeps R as reset pose", () => {
+    expect(resolveShortcut(key("r"))).toBe("resetPose");
+    expect(resolveShortcut(key("r", { altKey: true }))).toBe("resetJoint");
+  });
+
+  it("keeps every Phase 2 shortcut off plain X and Alt+R combinations", () => {
+    expect(resolveShortcut(key("x", { shiftKey: true }))).toBeNull();
+    expect(resolveShortcut(key("x", { ctrlKey: true }))).toBeNull();
+  });
+
   it("does not let the object shortcuts shadow browser chords", () => {
     // Ctrl+G and Ctrl+R belong to the browser; a bare-key match would swallow
     // them, which is exactly the failure the modifier check exists to stop.

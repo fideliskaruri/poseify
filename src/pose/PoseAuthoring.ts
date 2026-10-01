@@ -7,6 +7,7 @@
 
 import * as THREE from "three";
 import type { PoseData } from "../posing/PosableSkeleton";
+import { FULL_PARENTS } from "../rig/RigContract";
 
 const DEG2RAD = Math.PI / 180;
 
@@ -63,12 +64,78 @@ export function anglesToPose(angles: PoseAngles): PoseData {
 export function mirrorPose(pose: PoseData): PoseData {
   const out: PoseData = {};
   for (const [bone, q] of Object.entries(pose)) {
-    const swapped = bone
-      .replace("Left", "\u0000")
-      .replace("Right", "Left")
-      .replace("\u0000", "Right");
+    const swapped = swapSides(bone);
     // Normalise negative zero: JSON.stringify writes -0 as 0, so leaving it
     // in place would make a serialise/parse round-trip fail deep equality.
+    out[swapped] = [norm(q[0]), norm(-q[1]), norm(-q[2]), norm(q[3])];
+  }
+  return out;
+}
+
+/**
+ * Swap Left and Right in a bone name.
+ *
+ * The sentinel avoids a double substitution: replacing "Left" with "Right"
+ * first would turn "RightArm" into "LeftArm" on the second pass.
+ */
+export function swapSides(bone: string): string {
+  return bone
+    .replace("Left", "\u0000")
+    .replace("Right", "Left")
+    .replace("\u0000", "Right");
+}
+
+/** Bone chains per limb, as the roots of each chain. */
+export type LimbName = "arm" | "leg";
+
+/**
+ * The bones that belong to each limb, per the rig contract's parent map.
+ *
+ * Mirroring one limb is the feature artists actually reach for — "mirror just
+ * the arms" — so the per-limb variants select bones by chain membership and
+ * reuse swapSides rather than carrying their own bone map.
+ */
+export const LIMB_ROOTS: Readonly<Record<LimbName, readonly string[]>> = {
+  arm: ["LeftArm", "RightArm"],
+  leg: ["LeftUpLeg", "RightUpLeg"],
+};
+
+/** Every contract bone that descends from one of a limb's roots. */
+export function limbBones(
+  limb: LimbName,
+  parents: Readonly<Record<string, string | null>> = FULL_PARENTS,
+): string[] {
+  const roots = new Set(LIMB_ROOTS[limb]);
+  // Walk every bone whose ancestry reaches a root, so a limb picks up its
+  // forearm, hand and fingers without being enumerated by hand.
+  const inLimb = (bone: string): boolean => {
+    let current: string | null = bone;
+    // Guard against a malformed parent map looping rather than hanging.
+    for (let depth = 0; current !== null && depth < 64; depth += 1) {
+      if (roots.has(current)) return true;
+      current = parents[current] ?? null;
+    }
+    return false;
+  };
+  return Object.keys(parents).filter(inLimb);
+}
+
+/**
+ * Mirror one limb across the sagittal plane, leaving every other bone alone.
+ *
+ * This is the fix-one-side workflow: an artist holding a sword in the right
+ * hand mirrors the arms and keeps the legs exactly as they were.
+ */
+export function mirrorLimb(
+  pose: PoseData,
+  limb: LimbName,
+  parents: Readonly<Record<string, string | null>> = FULL_PARENTS,
+): PoseData {
+  const members = new Set(limbBones(limb, parents));
+  const out: PoseData = { ...pose };
+  for (const [bone, q] of Object.entries(pose)) {
+    if (!members.has(bone)) continue;
+    const swapped = swapSides(bone);
     out[swapped] = [norm(q[0]), norm(-q[1]), norm(-q[2]), norm(q[3])];
   }
   return out;
