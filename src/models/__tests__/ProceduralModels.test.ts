@@ -152,6 +152,34 @@ describe("buildProceduralModel", () => {
     expect(Math.abs(left.quaternion.z)).toBeGreaterThan(0.2);
   });
 
+  it("skins without dereferencing a missing parent", () => {
+    // Regression guard. SkinnedMesh.applyBoneTransform walks the mesh's own
+    // ancestors to reach each skeleton bone, so a mesh bound while still
+    // detached from its group throws on the first real render. The figure
+    // still *posed* correctly, because posing touches bones directly and never
+    // runs the skinning path - so this only shows up as an empty thumbnail.
+    const root = buildProceduralModel(PROCEDURAL_CATALOG[0]);
+    let mesh: THREE.SkinnedMesh | null = null;
+    root.traverse((child) => {
+      if ((child as THREE.SkinnedMesh).isSkinnedMesh) mesh = child as THREE.SkinnedMesh;
+    });
+    const skinned = mesh as unknown as THREE.SkinnedMesh;
+    expect(skinned.parent).toBe(root);
+
+    // Drive the exact path a render takes, with no GL context needed.
+    // getVertexPosition is the public entry point a raycast or an edit uses,
+    // and it calls applyBoneTransform with a *vertex* index - so the loop must
+    // be over vertex count, not the index buffer's count.
+    root.updateMatrixWorld(true);
+    skinned.skeleton.update();
+    const vertexCount = skinned.geometry.getAttribute("position").count;
+    expect(() => {
+      for (let i = 0; i < vertexCount; i += 1) {
+        skinned.getVertexPosition(i, new THREE.Vector3());
+      }
+    }).not.toThrow();
+  });
+
   it("exports a usable OBJ vertex count", () => {
     // The OBJ exporter walks meshes, so an empty figure would export nothing.
     const root = buildProceduralModel(PROCEDURAL_CATALOG[0]);
@@ -163,4 +191,6 @@ describe("buildProceduralModel", () => {
     expect(verts).toBeGreaterThan(100);
   });
 });
+
+
 

@@ -254,7 +254,15 @@ export function buildProceduralModel(
   );
   geometry.setAttribute(
     "skinIndex",
-    new THREE.Uint16BufferAttribute(boneIndices, 4),
+    // skinIndex is a 4-component attribute. Pushing one index per vertex left
+    // the attribute short, so the renderer read past the end of it and got a
+    // garbage boneIndex - which surfaces as "cannot read properties of
+    // undefined (reading 'matrixWorld')" deep inside applyBoneTransform, and
+    // as an empty thumbnail rather than an error the picker could show.
+    new THREE.Uint16BufferAttribute(
+      boneIndices.flatMap((index) => [index, 0, 0, 0]),
+      4,
+    ),
   );
   // skinWeight is a 4-component attribute whether or not a vertex uses all
   // four. Writing a single 1 and leaving the rest unset leaves them at 1 too,
@@ -288,6 +296,11 @@ export function buildProceduralModel(
   // the world matrix every frame, which collapses the deformation as soon as
   // the root moves, which is the exact bug the v1 build documented.
   mesh.bindMode = "detached";
+  // The mesh joins the hierarchy before binding. Applying a bone transform
+  // walks the mesh's own ancestors to reach each skeleton bone, so a mesh
+  // bound while still detached from the group dereferences a null parent and
+  // throws on the first render - which is why the thumbnails came back empty
+  // while the figure itself still posed correctly.
   group.add(mesh);
 
   for (const bone of bones.values()) bone.updateMatrixWorld(true);
@@ -390,6 +403,7 @@ export function proceduralLoadConfig(
     exportable: true,
   };
 }
+
 
 
 
