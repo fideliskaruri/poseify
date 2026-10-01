@@ -272,6 +272,77 @@ const propGroups = computed(() => {
   return [...map.entries()];
 });
 
+// ---------------------------------------------------------------- overlays
+//
+// PoseMy.Art keeps no permanent panels: every tool opens a large surface over
+// the canvas. One overlay at a time matches that, and stops the previous
+// layout's real failure mode, where twelve stacked sections in a 216px column
+// meant Props and Animation were off-screen behind a scroll.
+type OverlayName = "models" | "props" | "poses" | "scenes" | "export" | "objects";
+
+const activeOverlay = ref<OverlayName | null>(null);
+
+const OVERLAY_TITLES: Record<OverlayName, string> = {
+  models: "Add Models",
+  props: "Add Props",
+  poses: "Poses",
+  scenes: "Premade Scenes",
+  export: "Export",
+  objects: "Scene Objects",
+};
+
+const overlayTitle = computed(() =>
+  activeOverlay.value ? OVERLAY_TITLES[activeOverlay.value] : "",
+);
+
+function openOverlay(name: OverlayName): void {
+  // Clicking the active rail button closes it, so the rail toggles.
+  activeOverlay.value = activeOverlay.value === name ? null : name;
+}
+
+function closeOverlay(): void {
+  activeOverlay.value = null;
+}
+
+// Colour swatch needs a value to bind to; remember the last one chosen so the
+// picker does not snap back to black each time an object is selected.
+const objectColor = ref("#cccccc");
+
+watch(objectColor, (value) => setSelectedObjectColor(value));
+
+// Pose pagination. PoseMy.Art exposes rows-per-page and paging because its
+// library is thousands of poses; ours grows past a thousand in the v2 run, so
+// the same control is needed to keep the picker usable.
+const posePageSize = ref(30);
+const posePage = ref(0);
+
+const posePageCount = computed(() =>
+  Math.max(1, Math.ceil(visiblePoses.value.length / posePageSize.value)),
+);
+
+const pagedPoses = computed(() => {
+  const start = posePage.value * posePageSize.value;
+  return visiblePoses.value.slice(start, start + posePageSize.value);
+});
+
+// Any change to the filter has to reset the page, or a search that matches
+// fewer poses than one page leaves the artist staring at an empty grid.
+watch([poseSearch, poseTagFilter, posePageSize], () => {
+  posePage.value = 0;
+});
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape") closeOverlay();
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", onKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown);
+});
+
 function onPropFile(event: Event): void {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -330,29 +401,377 @@ watch(
   <div class="app">
     <div ref="mount" class="viewport"></div>
 
-    <header class="topbar">
-      <span class="brand">Poseify</span>
-      <span class="status">{{ status }}</span>
+    <!--
+      Icon rails over the canvas, matching PoseMy.Art's layout: no permanent
+      side panels, every tool is a round button that opens an overlay. The
+      canvas stays clear, which is the whole point of the redesign.
+    -->
+    <nav class="rail rail-top-left" aria-label="Add to scene">
       <button
         type="button"
-        class="chip"
-        :class="{ active: showFavoritesOnly }"
+        class="icon-btn"
+        aria-label="Add Models"
+        title="Add Models"
+        @click="openOverlay('models')"
+      >
+        <span aria-hidden="true">&#9635;</span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Add Props"
+        title="Add Props"
+        @click="openOverlay('props')"
+      >
+        <span aria-hidden="true">&#9638;</span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Poses"
+        title="Poses"
+        :disabled="!activeModelId"
+        @click="openOverlay('poses')"
+      >
+        <span aria-hidden="true">&#9655;</span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Premade Scenes"
+        title="Premade Scenes"
+        @click="openOverlay('scenes')"
+      >
+        <span aria-hidden="true">&#9635;</span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Export"
+        title="Export"
+        @click="openOverlay('export')"
+      >
+        <span aria-hidden="true">&#8681;</span>
+      </button>
+    </nav>
+
+    <nav class="rail rail-top-right" aria-label="Scene and settings">
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Undo"
+        title="Undo (Ctrl/Cmd + Z)"
+        :disabled="!canUndo"
+        @click="undo()"
+      >
+        <span aria-hidden="true">&#8630;</span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Redo"
+        title="Redo (Ctrl/Cmd + Shift + Z)"
+        :disabled="!canRedo"
+        @click="redo()"
+      >
+        <span aria-hidden="true">&#8631;</span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Save and load"
+        title="Save &amp; Load"
+        @click="openOverlay('scenes')"
+      >
+        <span aria-hidden="true">&#128190;</span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        :class="{ on: showFavoritesOnly }"
         :aria-pressed="showFavoritesOnly"
+        aria-label="Favourites"
         title="Show only favourited models (F)"
         @click="toggleFavoritesFilter()"
       >
-        &#9829;
+        <span aria-hidden="true">&#9829;</span>
       </button>
       <button
         type="button"
-        class="chip"
-        :aria-expanded="settingsOpen"
+        class="icon-btn"
+        aria-label="Settings"
         title="Settings and keyboard shortcuts (Ctrl+,)"
         @click="openSettings()"
       >
-        Settings
+        <span aria-hidden="true">&#9881;</span>
       </button>
-    </header>
+    </nav>
+
+    <!--
+      Context toolbar. Only appears when a model is selected, and mirrors
+      PoseMy.Art's order so muscle memory transfers: transform first, then
+      pose editing, then object-level commands.
+    -->
+    <div v-if="activeModelId" class="context-bar" role="toolbar" aria-label="Object and pose tools">
+      <div class="segmented" role="group" aria-label="Transform mode">
+        <button
+          type="button"
+          :class="{ on: objectGizmoMode === 'translate' }"
+          title="Move (G)"
+          aria-label="Move"
+          @click="setObjectGizmoMode('translate')"
+        >
+          Move
+        </button>
+        <button
+          type="button"
+          :class="{ on: objectGizmoMode === 'rotate' }"
+          title="Rotate (Shift+R)"
+          aria-label="Rotate"
+          @click="setObjectGizmoMode('rotate')"
+        >
+          Rotate
+        </button>
+        <button
+          type="button"
+          :class="{ on: objectGizmoMode === 'scale' }"
+          title="Scale (S)"
+          aria-label="Scale"
+          @click="setObjectGizmoMode('scale')"
+        >
+          Scale
+        </button>
+      </div>
+
+      <span class="context-divider" aria-hidden="true"></span>
+
+      <button
+        type="button"
+        class="tool-btn"
+        title="Switch Pose Sides"
+        @click="switchPoseSides()"
+      >
+        Switch Sides
+      </button>
+      <button
+        type="button"
+        class="tool-btn"
+        title="Mirror arms only"
+        @click="mirrorArmLimb()"
+      >
+        Mirror Arms
+      </button>
+      <button
+        type="button"
+        class="tool-btn"
+        title="Mirror legs only"
+        @click="mirrorLegLimb()"
+      >
+        Mirror Legs
+      </button>
+      <button
+        type="button"
+        class="tool-btn"
+        title="Reset the selected joint"
+        @click="resetSelectedJoint()"
+      >
+        Reset Joint
+      </button>
+
+      <span class="context-divider" aria-hidden="true"></span>
+
+      <button
+        type="button"
+        class="tool-btn"
+        title="Duplicate (Shift+D)"
+        @click="duplicateSelectedObject()"
+      >
+        Duplicate
+      </button>
+      <button
+        type="button"
+        class="tool-btn"
+        title="Hide / show (Shift+H)"
+        @click="toggleObjectHidden()"
+      >
+        Hide
+      </button>
+      <button
+        type="button"
+        class="tool-btn"
+        title="Lock / unlock (L)"
+        @click="toggleObjectLocked()"
+      >
+        Lock
+      </button>
+      <label class="tool-swatch" title="Object colour">
+        <span class="visually-hidden">Object colour</span>
+        <input
+          type="color"
+          :value="objectColor"
+          @input="setSelectedObjectColor(($event.target as HTMLInputElement).value)"
+        />
+      </label>
+      <button
+        type="button"
+        class="tool-btn danger"
+        title="Delete (Del)"
+        @click="deleteSelectedObject()"
+      >
+        Delete
+      </button>
+    </div>
+
+    <p v-if="status" class="status-pill" aria-live="polite">{{ status }}</p>
+
+    <!--
+      Overlay surfaces. Exactly one is open at a time; the rail buttons swap
+      between them. Each is a large panel over the canvas rather than a
+      scrolling column beside it.
+    -->
+    <section
+      v-if="activeOverlay"
+      class="overlay"
+      role="dialog"
+      :aria-label="overlayTitle"
+    >
+      <header class="overlay-head">
+        <h2>{{ overlayTitle }}</h2>
+        <button
+          type="button"
+          class="icon-btn close"
+          aria-label="Close"
+          title="Close"
+          @click="closeOverlay()"
+        >
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </header>
+      <div class="overlay-body">
+        <!-- Models -->
+        <div v-if="activeOverlay === 'models'" class="overlay-pane">
+          <div v-for="[family, items] in groups" :key="family" class="group">
+            <h3>{{ family }}</h3>
+            <div class="tile-grid">
+              <div v-for="m in items" :key="m.id" class="tile-wrap">
+                <button
+                  class="chip tile"
+                  :class="{
+                    hasThumb: !!thumbnails[m.id],
+                    loading: loadingId === m.id,
+                  }"
+                  :disabled="loadingId === m.id"
+                  type="button"
+                  @click="addModel(m)"
+                >
+                  <img
+                    v-if="thumbnails[m.id]"
+                    :src="thumbnails[m.id]"
+                    :alt="m.name"
+                  />
+                  <span v-else class="thumb placeholder" aria-hidden="true"></span>
+                  <span class="pose-name">{{ m.name }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="fav"
+                  :class="{ on: isFavorite(m.id) }"
+                  :aria-label="`Favourite ${m.name}`"
+                  :aria-pressed="isFavorite(m.id)"
+                  @click="toggleFavorite(m.id)"
+                >
+                  &#9829;
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Poses -->
+        <div v-else-if="activeOverlay === 'poses'" class="overlay-pane">
+          <div class="overlay-controls">
+            <label class="field grow">
+              <span>Search poses</span>
+              <input
+                v-model="poseSearch"
+                type="search"
+                placeholder="e.g. sword, wave, kneel"
+              />
+            </label>
+            <label class="field compact">
+              <span>Per page</span>
+              <input
+                v-model.number="posePageSize"
+                type="number"
+                min="6"
+                max="120"
+                step="6"
+              />
+            </label>
+          </div>
+
+          <div class="tags">
+            <button
+              v-for="tag in allPoseTags"
+              :key="tag"
+              type="button"
+              class="tag"
+              :class="{ on: poseTagFilter.includes(tag) }"
+              @click="togglePoseTag(tag)"
+            >
+              {{ tag }}
+            </button>
+          </div>
+
+          <p v-if="poseError" class="hint warn">{{ poseError }}</p>
+          <p v-else-if="clipboardStatus" class="hint">{{ clipboardStatus }}</p>
+
+          <div class="pose-grid">
+            <button
+              v-for="pose in pagedPoses"
+              :key="pose.id"
+              type="button"
+              class="pose-tile"
+              :class="{ on: appliedPoseId === pose.id }"
+              :title="`${pose.name} — ${pose.tags.join(', ')}`"
+              @click="applyPose(pose)"
+            >
+              <img
+                v-if="poseThumbs[pose.id]"
+                :src="poseThumbs[pose.id]"
+                :alt="`${pose.name} pose`"
+              />
+              <span v-else class="thumb placeholder" aria-hidden="true"></span>
+              <span class="pose-name">{{ pose.name }}</span>
+            </button>
+          </div>
+
+          <div class="pager">
+            <button
+              type="button"
+              class="chip"
+              :disabled="posePage === 0"
+              @click="posePage = Math.max(0, posePage - 1)"
+            >
+              Previous
+            </button>
+            <span class="hint">
+              Page {{ posePage + 1 }} of {{ posePageCount }} —
+              {{ visiblePoses.length }}
+              {{ visiblePoses.length === 1 ? "pose" : "poses" }}
+            </span>
+            <button
+              type="button"
+              class="chip"
+              :disabled="posePage >= posePageCount - 1"
+              @click="posePage = Math.min(posePageCount - 1, posePage + 1)"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <aside class="panel panel-left">
       <section>
@@ -1894,6 +2313,284 @@ button.chip.tile.hasThumb {
 button.chip.tile.loading {
   border-color: var(--poseify-accent);
   opacity: 0.6;
+}
+
+/* ------------------------------------------------------- PoseMy.Art shell
+ *
+ * Round icon buttons on two rails, a contextual toolbar, and overlays over
+ * the canvas. No permanent side panels: the 3D view is the app, the chrome
+ * floats on it. 46px matches PoseMy.Art's button size so the muscle memory
+ * transfers.
+ */
+.rail {
+  position: fixed;
+  top: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+}
+
+.rail-top-left {
+  left: 4px;
+}
+
+.rail-top-right {
+  right: 4px;
+}
+
+.icon-btn {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--poseify-panel) 86%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--poseify-text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--poseify-accent) 34%, var(--poseify-panel));
+  transform: translateY(-1px);
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.icon-btn.on {
+  background: color-mix(in srgb, var(--poseify-accent) 60%, var(--poseify-panel));
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon-btn.close {
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.status-pill {
+  position: fixed;
+  left: 60px;
+  top: 16px;
+  z-index: 2;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--poseify-panel) 80%, transparent);
+  color: var(--poseify-text-dim);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* Contextual toolbar for the selected object. Sits just under the rails so it
+ * never overlaps them, and scrolls horizontally on a narrow window rather
+ * than wrapping into the canvas. */
+.context-bar {
+  position: fixed;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+  padding: 6px 8px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--poseify-panel) 92%, transparent);
+  backdrop-filter: blur(10px);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.context-bar .segmented {
+  display: flex;
+  gap: 2px;
+  grid-template-columns: none;
+}
+
+.context-bar .segmented button {
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.context-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--poseify-border);
+  flex: 0 0 auto;
+}
+
+.tool-btn {
+  padding: 7px 12px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 8px;
+  background: #232833;
+  color: var(--poseify-text);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tool-btn:hover {
+  border-color: var(--poseify-accent);
+}
+
+.tool-btn.danger {
+  color: #ff8080;
+}
+
+.tool-swatch {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 8px;
+  background: #232833;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.tool-swatch input {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* Overlay surface: large, centred, and offset from the rails so it never
+ * covers the buttons that opened it. */
+.overlay {
+  position: fixed;
+  z-index: 4;
+  top: 66px;
+  left: 60px;
+  right: 60px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--poseify-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--poseify-panel) 96%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 45%);
+  overflow: hidden;
+}
+
+.overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--poseify-border);
+}
+
+.overlay-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.overlay-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.overlay-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* The original two-column panels are superseded by the rails and overlays.
+ * They stay in the template for now so each section can be ported into its
+ * overlay pane without losing markup, but they must not render: two panels
+ * plus the new chrome is the layout problem this change is fixing.
+ * Remove the aside elements once every section has been ported.
+ */
+.panel-left,
+.panel-right {
+  display: none;
+}
+
+.overlay-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.overlay-controls .grow {
+  flex: 1;
+}
+
+.overlay-controls .compact {
+  width: 110px;
+}
+
+.overlay-controls input[type="number"] {
+  width: 100%;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 0 2px;
+}
+
+.pager .hint {
+  margin: 0;
+  min-width: 200px;
+  text-align: center;
+}
+
+/* The pose grid's own rule is 2 columns with a 320px cap, sized for the old
+ * 216px rail. Inside the overlay it has the full width, so it becomes an
+ * auto-fill grid and gives up the inner scroll — the overlay body scrolls
+ * instead, which keeps the pager reachable.
+ */
+.overlay-pane .pose-grid {
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+  max-height: none;
+  overflow-y: visible;
+  margin-top: 0;
+}
+
+/* Model tiles go from 2-up in a 216px rail to 5-up across the overlay, which
+ * is what makes the renders readable. */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
 }
 
 .segmented {
