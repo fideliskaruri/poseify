@@ -30,6 +30,12 @@ Everything runs in the browser. There is no account, no server, and no cost.
 - **Camera and light control** — field of view for dramatic perspective,
   spherical light direction with a visible gizmo, and an adjustable ground
   grid.
+- **Favourites and settings** — favourite models with the heart, filter the
+  picker to them, and adjust preferences from the settings panel.
+- **Keyboard shortcuts** — undo/redo, delete, reset pose, frame the scene,
+  play/pause, and open settings. Press `?` in the app for the full list.
+- **Onboarding tour** — a short guided introduction on first run, replayable
+  from the settings panel.
 
 ## Getting started
 
@@ -93,6 +99,11 @@ by `tools/fetch-models.ts`.
 If you fork or publish this repository you must either delete
 `public/vendor/pose-my-art/` or substitute assets you have the right to
 distribute.
+
+All 33 files are listed in `ATTRIBUTION.md`, which is mandatory reading
+alongside this section. Of the 85 filenames the CDN catalogue names, these 33
+are reachable and the other 52 return a real HTTP 403 — see `STATUS.md` for
+the full breakdown.
 
 | File | Size | Family |
 |---|---|---|

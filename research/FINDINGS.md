@@ -4,6 +4,21 @@ Date: 2026-09-30
 Target: rebuild as **Poseify** (open source, zero cost)
 Method: live browser session (CDP network capture), bundle static analysis, official site/pricing/FAQ scrape, license verification via GitHub API + raw LICENSE files.
 
+> **Superseded in part — read `STATUS.md` first.** This dossier is the
+> *original* pre-build research. Two of its recommendations were deliberately
+> overridden by the build's own goal prompt, which explicitly authorises
+> scraping `posemyart3.nyc3.cdn.digitaloceanspaces.com`:
+>
+> 1. §7.1/§7.2 advised MPFB/MakeHuman base meshes and primitives-only bots.
+>    The shipped library is **33 real FBX files scraped from the PoseMy.Art
+>    CDN** — the user rejected hand-built mannequins outright. See
+>    `ATTRIBUTION.md` for the licence position this creates.
+> 2. §9.6 says "Do not scrape" that CDN. That instruction is **void** for this
+>    project; the host is listed as scrapeable in the goal's hard constraints.
+>
+> Everything else here (rig convention, mocap source, scale factor, OpenPose
+> keypoint ordering) remains accurate and load-bearing.
+
 ---
 
 ## 1. Executive summary
@@ -140,9 +155,13 @@ This is the **Mixamo skeleton**. Any model retargeted to these names works with 
 
 ---
 
-## 7. Free / open-source asset sourcing (all verified)
+## 7. Free / open-source asset sourcing (all verified, but see the superseded notes in 7.1 / 7.2)
 
-### 7.1 Humanoid base meshes — **MakeHuman assets are CC0 1.0**
+### 7.1 Humanoid base meshes — MakeHuman assets are CC0 1.0 *(route NOT taken)*
+
+> **Superseded.** This section's licensing analysis is correct, but the
+> recommendation was overridden: the shipped catalogue is 33 scraped vendor
+> FBX, not MPFB-generated meshes. Kept for provenance only.
 
 Verified from `makehumancommunity/makehuman` LICENSE.md:
 - **Section C**: "The assets ... base mesh and proxies, targets and modifiers, textures, clothes, poses and expressions ... released under **CC0 1.0 Universal**."
@@ -159,7 +178,7 @@ This single source gives you: realistic male/female, young/teen/child, brute, sk
 
 ### 7.2 Biped reference robots — **Mixamo XBot/YBot**
 
-PoseMy ships `xbot_opt.fbx` / `ybot_opt.fbx` — these are Adobe Mixamo's robot mannequins, retargeted. **Do not redistribute these FBX files** — Mixamo's terms restrict redistribution of the character assets. Instead:
+PoseMy ships `xbot_opt.fbx` / `ybot_opt.fbx` — these are Adobe Mixamo's robot mannequins, retargeted. **Do not redistribute these FBX files** — Mixamo's terms restrict redistribution of the character assets. Instead: *(Superseded: both files are in the shipped catalogue and carry the same non-redistributable caveat as the rest of the vendor set — see `ATTRIBUTION.md`.)*
 
 - Generate your own equivalent from primitives, or
 - Use the CC0 sources below and skip Mixamo entirely.
@@ -209,7 +228,7 @@ Open hand/gesture data is derivable: Mixamo finger bone names are a de-facto sta
 3. **Hand IK** with 42 finger bones is where posing tools usually feel bad. Mirror PoseMy's approach: hand bones get a smaller gizmo size (0.8–1.0 vs 3–4) and likely a dedicated hand mode.
 4. **OpenPose export fidelity** requires exact COCO-18 + face/foot keypoint mapping from the 62-bone rig. Get the joint index order right or every downstream ControlNet user gets garbage.
 5. **Performance:** 85 models x FBX + textures. Use Draco/KTX2, lazy-load on selection, cache aggressively.
-6. **Legal:** the app's *interaction design* is not copyrightable, but their **FBX files, pose data, scene data, prop meshes, and thumbnails are their assets**. Poseify must ship only CC0/MIT content with an attribution file. Do not scrape `posemyart3.nyc3.cdn.digitaloceanspaces.com`.
+6. **Legal:** the app's *interaction design* is not copyrightable, but their **FBX files, pose data, scene data, prop meshes, and thumbnails are their assets**. *Superseded:* the goal prompt authorises scraping `posemyart3.nyc3.cdn.digitaloceanspaces.com`, so the shipped library is vendor FBX rather than CC0-only. Those files stay gitignored, are fetched at install time, and `ATTRIBUTION.md` states plainly that they are **not** MIT or CC0 and must be removed or replaced before redistribution.
 
 ---
 

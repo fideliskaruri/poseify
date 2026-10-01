@@ -108,10 +108,9 @@ saves the ones the CDN actually serves. `tools/verify-models.ts` checks that
 each one parses and maps onto the Poseify rig contract. Exact source URLs and
 byte sizes are recorded in `public/vendor/pose-my-art/manifest.json`.
 
-The remaining 52 candidates return a real HTTP 403: the whole `*_OP_Y_IK.fbx`
-rig family (46 files) plus `wolf.fbx`, `Cat_OP_Y.fbx`, `Bear_OP_Y.fbx`,
-`Bull_OP_Y.fbx`, `Cow_OP_Y.fbx`, `Deer_OP_Y.fbx`, `Bonnet_Macaque_OP_Y.fbx`,
-`Kangaroo_OP_Y.fbx` and `y_bot_brute_OP_Y_IK.fbx`. Availability is not
+The remaining 52 candidates return a real HTTP 403: 44 `*_OP_Y_IK.fbx`
+files, 7 `*_OP_Y.fbx` files (`Cat`, `Bear`, `Bull`, `Cow`, `Deer`,
+`Bonnet_Macaque`, `Kangaroo`), and `wolf.fbx`. Availability is not
 predictable from the filename — `wolf.fbx` 403s while `horse.fbx` serves fine.
 
 ## Rig convention

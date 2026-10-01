@@ -3,7 +3,7 @@
 Goal: free, open-source, browser-based 3D pose reference tool (PoseMy.Art equivalent).
 Stack fixed: Vue 3 + Vite + TypeScript + Three.js. Zero paid cost.
 
-Last updated: 2026-09-30
+Last updated: 2026-10-01
 
 ## Milestone state
 
@@ -20,6 +20,63 @@ Last updated: 2026-09-30
 | M8 — Props + image planes | **PASS** | 202/202 tests; build clean. Browser-verified: chair renders at real-world scale and the seated pose places the figure on it (footY 0.454 vs a 0.45 m seat) |
 | M9 — Scenes, save/load, undo | **PASS** | 239/239 tests; build clean. Browser-verified: premade scene loads with figure + props, save → page reload → restore is identical, undo/redo walks state correctly |
 | M10 — Polish + ship | **PASS** | 254/254 tests; typecheck + build clean. Browser-verified: favourites persist across reload (3 lit hearts survive, filter narrows 33 → 3), settings panel opens with 9 shortcuts, `?`/`F`/`Delete`/`Ctrl+,` all fire, `Ctrl+H` correctly does nothing, onboarding tour renders and advances, console has 0 errors. Fresh clone -> `npm install` -> 33/33 models -> `npm run build` succeeds |
+
+## Model availability — settled
+
+The CDN catalogue is now fully characterised, so nothing further is being
+probed. `research/model-catalog.csv` names 85 distinct `.fbx` files; of those:
+
+| Outcome | Count | Detail |
+|---|---|---|
+| Downloaded | 33 | 67.16 MB, all listed in `src/models/VendorCatalog.ts` |
+| HTTP 403 | 52 | 44 `*_OP_Y_IK.fbx`, 7 `*_OP_Y.fbx`, `wolf.fbx` |
+| Unknown | 0 | no throttled requests left unresolved |
+
+Every one of the 33 downloaded files is present in the CSV, and every CSV file
+not downloaded is a confirmed 403 — the two sets agree exactly, with nothing
+unaccounted for. `npm run models:verify` re-checks all 33 against the rig
+contract: 30 humanoids clean, 3 non-humanoid by design (2 mermaids, horse),
+0 failures.
+
+The `*_OP_Y*` families are the second rig generation. They are gone from the
+CDN entirely, not merely premium-gated — `wolf.fbx` 403s while `horse.fbx`
+serves, so availability does not follow the filename or the premium flag.
+
+```
+probed 85 distinct fbx
+  downloaded 33  67.16 MB
+  missing    52  (definite HTTP 403/404)
+  unknown    0  (no usable HTTP status -- NOT missing)
+```
+
+### Fetch robustness
+
+`tools/fetch-models.ts` distinguishes a *throttled* request from a *missing*
+file and never records one as the other. Because the CDN rate-limits hard, two
+guards were added after a real fresh-clone failure delivered only 29 of 33:
+
+- a retry sweep that re-queues every `unknown` at the cold gap, up to 3 sweeps;
+- `REQUEST_TIMEOUT_MS` raised 30s -> 120s, because the largest model
+  (`realistic_woman_OP_IK.fbx`, 7.88 MB) was timing out rather than failing.
+
+`tools/setup-assets.ts` now checks that every FBX referenced by
+`VendorCatalog.ts` exists, not merely that the directory does, and warns with
+the missing filenames if a fetch comes up short.
+
+## Research dossier status
+
+`research/FINDINGS.md` is the original pre-build dossier and is retained for
+provenance. Two of its recommendations were deliberately overridden and are now
+marked superseded in place:
+
+- its MPFB/MakeHuman asset route (7.1) — the shipped library is scraped vendor
+  FBX, per the goal prompt's explicit authorisation of the CDN and the user's
+  rejection of hand-built mannequins;
+- its "do not scrape `posemyart3.nyc3.cdn.digitaloceanspaces.com`" line (9.6) —
+  void for this project.
+
+The rig convention, mocap source and scale factor, and OpenPose keypoint
+ordering in that document remain accurate and load-bearing.
 
 ## M0 notes
 
