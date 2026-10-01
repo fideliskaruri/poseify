@@ -12,14 +12,14 @@ Last updated: 2026-09-30
 | M0 — Scaffold | **PASS** | `npm run dev` serves; WebGL canvas renders grid + orbit controls (confirmed in-browser); `npm run build` succeeds |
 | M1 — Rig contract + retargeter | **PASS** | 23/23 vitest tests green + typecheck clean. Mixamo-named skeleton validates clean; scrambled skeleton fails with non-empty `missing`; three-tier retarget (exact / alias / heuristic) covered including fail-loudly |
 | M2 — Model loading + posing core (FK/IK) | **PASS** | 46/46 tests; typecheck + build clean. Browser-verified: humanoid renders (2 draw calls, 1256 tris), joint select attaches TransformControls gizmo, FK rotation deforms mesh (hand moved 0.395 m), IK solves end-effector chain |
-| M3 — Model library | **PASS** | 16 real FBX models downloaded and verified (16/16 resolve 22/22 core bones via alias, all skinned, correct heights). Browser-verified: mannequin renders at 28,880 tris and deforms under FK posing. 36 models total in picker |
+| M3 — Model library | **PASS** | All procedurally generated models removed. 85 CDN filenames probed, **33 reachable and downloaded** (67.16 MB), 52 confirmed HTTP 403, 0 unknown. `npm run models:verify`: 30 humanoids contract-clean, 3 non-humanoid by design, 0 failed. Browser-verified: 33 tiles each showing a real rendered PNG thumbnail of the actual FBX, 33 distinct data URLs, 0 procedural placeholders |
 | M4 — Camera, lighting, environment | **PASS** | 71/71 tests; build clean. Browser-verified: FOV 15° vs 100° visibly changes perspective, light azimuth/elevation changes shading, cast shadow renders opposite the light, two-layer grid with adjustable cell/divisions |
 | M5 — Export (5 passes + OBJ) | **PASS** | 106/106 tests; build clean. Browser-verified at 2048×2048: 5 passes produce 5 distinct payloads; OBJ export of the posed mannequin yields 86,640 verts / 28,880 faces in metres |
 | M6 — Poses | **PASS** | 137/137 tests; build clean. Browser-verified: 98 pose tiles with 60 rendered thumbnails, search "sword" -> exactly 3, "lying" tag -> exactly 5. Pose transfer measured at 5.16e-8 rad max error between two differently-proportioned models |
 | M7 — Animations (CMU mocap) | **PASS** | 130 clips imported from CMU, 179/179 tests, build clean. Browser-verified: clips listed, transport loads, scrubbing to 0.60s moves LeftHand 21 cm and changes the Spine quaternion |
 | M8 — Props + image planes | **PASS** | 202/202 tests; build clean. Browser-verified: chair renders at real-world scale and the seated pose places the figure on it (footY 0.454 vs a 0.45 m seat) |
 | M9 — Scenes, save/load, undo | **PASS** | 239/239 tests; build clean. Browser-verified: premade scene loads with figure + props, save → page reload → restore is identical, undo/redo walks state correctly |
-| M10 — Polish + ship | TODO | — |
+| M10 — Polish + ship | **PASS** | 254/254 tests; typecheck + build clean. Browser-verified: favourites persist across reload (3 lit hearts survive, filter narrows 33 → 3), settings panel opens with 9 shortcuts, `?`/`F`/`Delete`/`Ctrl+,` all fire, `Ctrl+H` correctly does nothing, onboarding tour renders and advances, console has 0 errors. Fresh clone -> `npm install` -> 33/33 models -> `npm run build` succeeds |
 
 ## M0 notes
 
