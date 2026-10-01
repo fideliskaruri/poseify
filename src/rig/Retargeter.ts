@@ -3,6 +3,7 @@ import {
   ALL_BONES,
   BODY_BONES,
   CORE_BONES,
+  FULL_PARENTS,
   HIP_BONE,
   RIG_PARENTS,
   validateSkeleton,
@@ -29,6 +30,16 @@ export interface RetargetResult {
 
 export interface RetargetOptions {
   requireHands?: boolean;
+  /**
+   * Seek the 40 finger bones without making them mandatory.
+   *
+   * requireHands demands all 62 names and fails validation when any is
+   * missing, which is the right strictness for a test rig but the wrong one
+   * for shipping: the horse and the mermaids have no fingers, and every
+   * humanoid should still have *its* fingers bound so hand poses, hand export
+   * and per-limb mirroring work.
+   */
+  bindFingers?: boolean;
   leftIsPositiveX?: boolean;
   throwOnFailure?: boolean;
 }
@@ -220,9 +231,13 @@ function contractBoneFromName(name: string): string | null {
 function depthOf(contractName: string): number {
   let d = 0;
   let cur: string | null = contractName;
-  while (cur && RIG_PARENTS[cur]) {
+  // FULL_PARENTS, not RIG_PARENTS: the body map stops at the wrist, so a
+  // finger bone resolved to depth 0 and sorted alongside the root. The
+  // heuristic then had no resolved parent to hang it under and silently
+  // failed to bind any of the 40 finger bones.
+  while (cur && FULL_PARENTS[cur]) {
     d += 1;
-    cur = RIG_PARENTS[cur];
+    cur = FULL_PARENTS[cur];
   }
   return d;
 }
@@ -243,7 +258,8 @@ function heuristicPass(
   for (const contractName of ordered) {
     if (matches.has(contractName)) continue;
 
-    const parentName = RIG_PARENTS[contractName];
+    // Full hierarchy so a finger bone can find its wrist or its parent joint.
+    const parentName = FULL_PARENTS[contractName];
     const parentBone = parentName ? matches.get(parentName)?.bone : undefined;
 
     const candidates = parentBone
@@ -302,8 +318,13 @@ export function retargetSkeleton(
   options: RetargetOptions = {},
 ): RetargetResult {
   const requireHands = options.requireHands ?? false;
+  const bindFingers = options.bindFingers ?? false;
   const leftIsPositiveX = options.leftIsPositiveX ?? true;
-  const required: readonly string[] = requireHands ? ALL_BONES : CORE_BONES;
+  // bindFingers seeks the 40 finger bones without requiring them. requireHands
+  // demands all 62 and is the strict mode; the two are independent because a
+  // model that legitimately has no fingers should still load.
+  const required: readonly string[] =
+    requireHands || bindFingers ? ALL_BONES : CORE_BONES;
 
   const sources = collectBones(root);
   const consumed = new Set<THREE.Bone>();
@@ -345,7 +366,12 @@ export function retargetSkeleton(
   // Tier 3: heuristic.
   heuristicPass(sources, required, consumed, matches, leftIsPositiveX);
 
-  const missing = required.filter((n) => !matches.has(n));
+  // With bindFingers the finger bones are best-effort, so only the core
+  // contract is treated as required. Reporting 40 missing fingers on a model
+  // that genuinely has none would be noise, and failing on them would stop the
+  // horse from loading at all.
+  const mustHave = requireHands ? required : CORE_BONES;
+  const missing = mustHave.filter((n) => !matches.has(n));
   const unused = sources.filter((b) => !consumed.has(b));
 
   if (sources.length === 0) {
@@ -365,7 +391,7 @@ export function retargetSkeleton(
     unused,
     validation: validateSkeleton(
       sources.map((b) => b.name),
-      { requireHands },
+      { requireHands: requireHands || bindFingers },
     ),
     errors,
   };

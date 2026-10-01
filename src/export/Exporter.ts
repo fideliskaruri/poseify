@@ -15,7 +15,12 @@ import {
   type ExportOptions,
   type RenderPass,
 } from "./RenderPasses";
-import { COCO18_LIMBS, extractCoco18, type Keypoint2D } from "./OpenPose";
+import {
+  COCO18_LIMBS,
+  HAND_LIMBS,
+  extractCoco18,
+  type Keypoint2D,
+} from "./OpenPose";
 import { exportObj } from "./ObjExport";
 
 export interface ExportTarget {
@@ -56,6 +61,7 @@ export function drawOpenPose2D(
   width: number,
   height: number,
   transparent = false,
+  includeHands = false,
 ): void {
   canvas.width = width;
   canvas.height = height;
@@ -87,6 +93,24 @@ export function drawOpenPose2D(
   }
   ctx.stroke();
 
+  // Fingers are drawn thinner and in a second colour so a with-hands image is
+  // distinguishable from a body-only one at a glance, not just by count.
+  if (includeHands) {
+    ctx.strokeStyle = "#ffd166";
+    ctx.lineWidth = Math.max(1, Math.round(width / 900));
+    ctx.beginPath();
+    for (const [a, b] of HAND_LIMBS) {
+      const from = keypoints[a];
+      const to = keypoints[b];
+      if (!from || !to) continue;
+      const [x1, y1] = px(from);
+      const [x2, y2] = px(to);
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+  }
+
   const radius = Math.max(3, Math.round(width / 300));
   ctx.fillStyle = "#ff2d55";
   for (const k of keypoints) {
@@ -102,14 +126,17 @@ function renderOpenPose(
   width: number,
   height: number,
   transparent: boolean,
+  includeHands = false,
 ): string {
-  const keypoints = extractCoco18(target.skeleton, target.camera);
+  const keypoints = extractCoco18(target.skeleton, target.camera, {
+    includeHands,
+  });
   // The renderer's canvas already has a WebGL context, and a canvas can only
   // ever have one context type, so getContext("2d") on it returns null and
   // nothing would be drawn. The stick figure is therefore painted on its own
   // 2D canvas and read back directly.
   const canvas = document.createElement("canvas");
-  drawOpenPose2D(canvas, keypoints, width, height, transparent);
+  drawOpenPose2D(canvas, keypoints, width, height, transparent, includeHands);
   return canvas.toDataURL("image/png");
 }
 
@@ -127,6 +154,7 @@ export function renderPass(
 ): ExportResult {
   const { renderer, scene, camera } = target;
   const { width, height, transparent, hideHelpers } = options;
+  const includeHands = options.includeHands ?? false;
 
   const size = new THREE.Vector2();
   renderer.getSize(size);
@@ -165,7 +193,13 @@ export function renderPass(
         canny.render({ renderer, scene, camera }, target.helpers);
         break;
       case "openpose":
-        dataUrl = renderOpenPose(target, width, height, transparent);
+        dataUrl = renderOpenPose(target, width, height, transparent, includeHands);
+        break;
+      case "openpose-hands":
+        // Always with hands regardless of the caller's option: the pass name is
+        // the contract, so asking for this pass and getting a body-only image
+        // would be a silent wrong answer rather than a default.
+        dataUrl = renderOpenPose(target, width, height, transparent, true);
         break;
     }
 

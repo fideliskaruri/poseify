@@ -37,6 +37,34 @@ export const COCO18 = [
 export type Coco18Name = (typeof COCO18)[number];
 
 /**
+ * Hand keypoints appended after the 18 body joints.
+ *
+ * PoseMy.Art exports OpenPose twice, with and without hands, because different
+ * downstream consumers need different things: ControlNet's openpose
+ * conditioning historically ignores fingers, while hand-pose pipelines and
+ * some SDXL variants do consume them. Rather than a second image format, the
+ * two variants share this one ordered list and differ only by where they stop.
+ *
+ * Order is fingers-then-thumb per hand, proximal to distal, following the
+ * OpenPose BODY_25 hand convention.
+ */
+export const HAND_KEYPOINTS: readonly string[] = [
+  "LeftHandIndex1", "LeftHandIndex2", "LeftHandIndex3",
+  "LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3",
+  "LeftHandRing1", "LeftHandRing2", "LeftHandRing3",
+  "LeftHandPinky1", "LeftHandPinky2", "LeftHandPinky3",
+  "LeftHandThumb1", "LeftHandThumb2", "LeftHandThumb3", "LeftHandThumb4",
+  "RightHandIndex1", "RightHandIndex2", "RightHandIndex3",
+  "RightHandMiddle1", "RightHandMiddle2", "RightHandMiddle3",
+  "RightHandRing1", "RightHandRing2", "RightHandRing3",
+  "RightHandPinky1", "RightHandPinky2", "RightHandPinky3",
+  "RightHandThumb1", "RightHandThumb2", "RightHandThumb3", "RightHandThumb4",
+];
+
+/** Full ordered keypoint list: 18 body then 32 hand. */
+export const OPENPOSE_FULL: readonly string[] = [...COCO18, ...HAND_KEYPOINTS];
+
+/**
  * Rig-contract bone supplying each COCO-18 keypoint.
  *
  * The rig has no dedicated nose/eye/ear bones, so those derive from the head
@@ -80,7 +108,12 @@ const FACE_OFFSETS: Readonly<
 };
 
 export interface Keypoint2D {
-  name: Coco18Name;
+  /**
+   * A COCO-18 body keypoint name, or a hand keypoint name when hands are
+   * included. Typed as string because the hand names are a separate,
+   * later-appended set rather than part of the COCO-18 contract.
+   */
+  name: string;
   x: number;
   y: number;
   // Model-space position, useful for debugging and the OBJ pass.
@@ -114,6 +147,13 @@ export interface Keypoint2DOptions {
    * same numbers suit chibi and adult heads.
    */
   headScale?: number;
+  /**
+   * Append the 32 finger keypoints after the 18 body joints.
+   *
+   * Off by default because the body-only form is what most ControlNet
+ * conditioning expects; the with-hands form exists for hand-pose pipelines.
+   */
+  includeHands?: boolean;
 }
 
 /**
@@ -164,6 +204,11 @@ export function extractCoco18(
     });
   }
 
+  // Fingers are appended rather than interleaved, so the body keypoints keep
+  // their exact COCO-18 indices and every existing consumer of them is
+  // unaffected by the flag.
+  if (options.includeHands) out.push(...extractHandKeypoints(skeleton, camera));
+
   return out;
 }
 
@@ -171,3 +216,82 @@ export function extractCoco18(
 export function coco18Index(name: string): number {
   return (COCO18 as readonly string[]).indexOf(name);
 }
+
+/**
+ * Project the finger bones alongside the body keypoints.
+ *
+ * Finger positions come from the real bones rather than being synthesised,
+ * because the rig contract already guarantees the 42 names on any humanoid.
+ * A bone the model lacks yields a keypoint at the wrist instead of a hole in
+ * the image, which keeps every limb index valid and the picture honest: the
+ * artist sees collapsed fingers where there are none.
+ */
+export function extractHandKeypoints(
+  skeleton: PosableSkeleton,
+  camera: THREE.Camera,
+): Keypoint2D[] {
+  skeleton.root.updateMatrixWorld(true);
+  const world = new THREE.Vector3();
+  const ndc = new THREE.Vector3();
+  const out: Keypoint2D[] = [];
+
+  for (const keypoint of HAND_KEYPOINTS) {
+    const bone = skeleton.getBone(keypoint);
+    if (bone) {
+      bone.getWorldPosition(world);
+    } else {
+      // Fall back to the wrist so the keypoint still lands on the hand rather
+      // than at the image origin.
+      const wrist = skeleton.getBone(
+        keypoint.startsWith("Left") ? "LeftHand" : "RightHand",
+      );
+      if (wrist) wrist.getWorldPosition(world);
+    }
+    ndc.copy(world).project(camera);
+    out.push({
+      name: keypoint,
+      x: (ndc.x + 1) / 2,
+      y: (1 - ndc.y) / 2,
+      model: world.clone(),
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Limb connections for the hand keypoints, as [from, to] pairs of indices into
+ * OPENPOSE_FULL.
+ *
+ * Chains run first-joint -> second -> third, plus the thumb's fourth segment.
+ * Each finger's root links back to the COCO-18 wrist, so a with-hands image
+ * stays one connected figure rather than two floating clusters. Built once at
+ * module load because the mapping is static and every export would otherwise
+ * recompute it.
+ */
+export const HAND_LIMBS: readonly (readonly [number, number])[] = (() => {
+  const base = COCO18.length;
+  const at = (name: string): number => base + HAND_KEYPOINTS.indexOf(name);
+  const limbs: (readonly [number, number])[] = [];
+  for (const side of ["Left", "Right"] as const) {
+    const wrist = coco18Index(`${side}Wrist`);
+    for (const finger of ["Index", "Middle", "Ring", "Pinky", "Thumb"]) {
+      limbs.push([wrist, at(`${side}Hand${finger}1`)]);
+    }
+    for (const finger of ["Index", "Middle", "Ring", "Pinky"]) {
+      for (let n = 1; n <= 2; n += 1) {
+        limbs.push([
+          at(`${side}Hand${finger}${n}`),
+          at(`${side}Hand${finger}${n + 1}`),
+        ]);
+      }
+    }
+    for (let n = 1; n <= 3; n += 1) {
+      limbs.push([
+        at(`${side}HandThumb${n}`),
+        at(`${side}HandThumb${n + 1}`),
+      ]);
+    }
+  }
+  return limbs;
+})();

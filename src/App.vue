@@ -5,6 +5,7 @@ import type { CatalogEntry } from "./models/ModelCatalog";
 import { PREMADE_SCENES } from "./scene/PremadeScenes";
 import { SHORTCUT_HELP } from "./prefs/Shortcuts";
 import { isHidden, isLocked } from "./scene/ObjectState";
+import { PASS_LABELS, type RenderPass } from "./export/RenderPasses";
 
 const {
   mount,
@@ -60,6 +61,8 @@ const {
   exportResults,
   exportError,
   exportSize,
+  exportWidth,
+  exportHeight,
   exportTransparent,
   runExport,
   exportObjNow,
@@ -337,14 +340,25 @@ watch(
       <section>
         <h2>Export</h2>
         <label class="field">
-          <span>Resolution <b>{{ exportSize }}&times;{{ exportSize }}</b></span>
+          <span>Width</span>
           <input
-            type="range"
-            min="512"
-            max="2048"
-            step="256"
-            :value="exportSize"
-            @input="exportSize = Number(($event.target as HTMLInputElement).value)"
+            type="number"
+            min="256"
+            max="4096"
+            step="64"
+            :value="exportWidth"
+            @input="exportWidth = Number(($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <label class="field">
+          <span>Height</span>
+          <input
+            type="number"
+            min="256"
+            max="4096"
+            step="64"
+            :value="exportHeight"
+            @input="exportHeight = Number(($event.target as HTMLInputElement).value)"
           />
         </label>
         <label class="check">
@@ -362,7 +376,7 @@ watch(
             :disabled="exporting || !activeModelId"
             @click="runExport()"
           >
-            {{ exporting ? "Rendering..." : "Export all 5" }}
+            {{ exporting ? "Rendering..." : `Export all ${RENDER_PASSES.length}` }}
           </button>
           <button
             type="button"
@@ -378,9 +392,22 @@ watch(
             Export OBJ
           </button>
         </div>
+        <div class="tags pass-tags">
+          <button
+            v-for="pass in RENDER_PASSES"
+            :key="pass"
+            type="button"
+            class="tag"
+            :disabled="exporting || !activeModelId"
+            :title="`Export only the ${pass} pass`"
+            @click="runExport([pass])"
+          >
+            {{ PASS_LABELS[pass] }}
+          </button>
+        </div>
         <p class="hint">
-          {{ RENDER_PASSES.length }} passes: regular, OpenPose, depth, canny,
-          normals.
+          {{ RENDER_PASSES.length }} passes. OpenPose comes in two forms: the
+          body-only one ControlNet expects, and the with-hands variant.
         </p>
       </section>
 

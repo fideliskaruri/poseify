@@ -27,7 +27,8 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 |---|---|---|
 | P0 — parity table | **PASS** | `research/PARITY.md` written; one row per GAP-ANALYSIS §2 capability across all nine subsections, each `Poseify (after)` cell a real value or explicit `TODO`, plus recorded scope decisions for animations, language and model count |
 | P1 — object transform + object ops | **PARTIAL** | see below |
-| P2–P8 | **TODO** | not started |
+| P2 — pose surgery | **PARTIAL** | logic complete and tested; UI wired; browser check outstanding (see note) |
+| P3–P8 | **TODO** | not started |
 
 ### Phase 1 detail
 
@@ -97,6 +98,60 @@ browser timed out (`Page.getFrameTree`, `Runtime.evaluate`,
 "operation exceeded its deadline"). The same browser session earlier in the
 run completed the same flows, so this is host contention rather than an app
 fault. It should be re-run once the machine is quiet.
+
+### Phase 2 detail
+
+Pose surgery, so an artist can fix one limb or one joint without re-picking the
+pose — the gap the all-or-nothing `mirrorPose` left.
+
+Built in `src/pose/PoseAuthoring.ts` (extended), `src/pose/PoseClipboard.ts`
+(new), `src/rig/RigContract.ts` (extended), wired through
+`src/composables/usePosing.ts` and the Pose panel in `src/App.vue`:
+
+- **Mirror Arm Limb / Mirror Leg Limb.** `mirrorLimb` selects bones by chain
+  membership and reuses `swapSides`, factored out of the existing
+  `mirrorPose`, rather than carrying a second bone-swap map.
+- **Switch Pose Sides** (`X`). Exposes the existing whole-body `mirrorPose`,
+  which was already implemented and tested but unreachable from the UI.
+- **Reset Selected Joint** (`Alt+R`). Restores one bone to bind via the
+  existing `resetBone`; every other bone is left untouched.
+- **Copy Pose / Paste Pose.** `PoseClipboard` holds one pose with copy
+  semantics and refuses an invalid pose rather than storing something that
+  would fail later at apply time.
+- **In Place** applies a pose without its `rootOffset`; **Random** picks from
+  the current filter. Both re-apply through the last pose rather than needing
+  a re-pick.
+
+One real defect was found by writing the tests rather than by reading the
+code: **`RIG_PARENTS` stopped at the wrist.** The 42 hand bones are in the
+contract and the IK chains treat the wrist as an arm member, but any code
+walking the hierarchy to find a limb could not see past `LeftHand` /
+`RightHand`, so mirroring an arm silently dropped its 40 finger bones. The
+finger chains now live in a new `HAND_PARENTS` map, merged via `FULL_PARENTS`.
+They were deliberately **not** added to `RIG_PARENTS`, whose 22 entries are
+quoted in `FINDINGS.md` and must not change.
+
+| Check | Result |
+|---|---|
+| `npm test` | **315 passed / 315** (was 287) |
+| `npm run typecheck` | clean |
+| Test: mirroring arms leaves legs/spine/hips bit-identical | **PASS** |
+| Test: mirroring legs leaves arms/spine/hips bit-identical | **PASS** |
+| Test: `mirrorLimb` is its own inverse within 1e-6 | **PASS** |
+| Test: limb walk reaches `Index1` and `Thumb4` | **PASS** |
+| Test: `mirrorPose` twice returns to original within 1e-6 | **PASS** |
+| Test: `mirrorPose` normalises -0 so round-trip is deep-equal | **PASS** |
+| Test: clipboard transfer holds to 1e-6 | **PASS** |
+| Test: clipboard refuses an invalid pose | **PASS** |
+| Test: `X` = switch sides, `F` stays favourites | **PASS** |
+| Test: `Alt+R` = reset joint, `R` stays reset pose | **PASS** |
+| Test: `FULL_PARENTS` covers all 62 bones, `RIG_PARENTS` stays 22 | **PASS** |
+| Browser: Surgery buttons present and act on a loaded model | **UNVERIFIED** — host at 92% CPU, CDP timing out |
+
+Phase 2's correctness rests on quaternion-level assertions rather than
+screenshots, which is what the objective asks for ("the other 21 bones
+bit-identical (assert on quaternions, not screenshots)"). The browser row is
+left explicitly unverified rather than claimed.
 
 ## Milestone state
 

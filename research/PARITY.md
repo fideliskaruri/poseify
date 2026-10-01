@@ -34,17 +34,17 @@ Legend for the last column: `test` = asserted in `npm test`,
 
 | capability | PoseMy | Poseify (before) | Poseify (after) | phase | verified how |
 |---|---|---|---|---|---|
-| Copy Pose | yes | no | TODO | 2 | test |
-| Paste Pose | yes | no | TODO | 2 | test |
+| Copy Pose | yes | no | yes, session clipboard | 2 | test |
+| Paste Pose | yes | no | yes, holds to 1e-6 | 2 | test |
 | Copy Pose (And Hand Pose) | yes | no | TODO | 5 | test |
 | Paste Pose - Hand Only | yes | no | TODO | 5 | test |
 | Load Pose from File - Hand Only | yes | no | TODO | 5 | browser |
-| Mirror Arm Limb | yes | no (whole-body only) | TODO | 2 | test |
-| Mirror Leg Limb | yes | no (whole-body only) | TODO | 2 | test |
-| Switch Pose Sides (`f`/`x`) | yes | function exists, no UI | TODO | 2 | browser |
-| Reset Selected Joint | yes | whole-pose reset only | TODO | 2 | test |
-| Random pose button | yes | no | TODO | 2 | browser |
-| In Place toggle (no rootOffset) | yes | implicit via `rootOffset`, no UI | TODO | 2 | browser |
+| Mirror Arm Limb | yes | no (whole-body only) | yes, incl. 40 finger bones | 2 | test |
+| Mirror Leg Limb | yes | no (whole-body only) | yes | 2 | test |
+| Switch Pose Sides (`f`/`x`) | yes | function exists, no UI | yes (`X`) | 2 | test |
+| Reset Selected Joint | yes | whole-pose reset only | yes (`Alt+R`) | 2 | test |
+| Random pose button | yes | no | yes | 2 | test |
+| In Place toggle (no rootOffset) | yes | implicit via `rootOffset`, no UI | yes | 2 | test |
 | Pose search | yes | yes | yes | - | existing |
 | Category dropdown | yes (563) | no (10 flat tag chips) | TODO | 2 | browser |
 | Rows-per-page control | yes | no (fixed grid) | TODO | 2 | browser |

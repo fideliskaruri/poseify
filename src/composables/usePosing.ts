@@ -209,10 +209,11 @@ export function usePosing() {
     vp.scene.add(root);
     vp.scene.updateMatrixWorld(true);
 
-    // requireHands stays false so a model that ships without finger bones is
-    // still usable for body posing; finger-dependent UI simply has fewer
-    // joints to offer rather than the model being rejected outright.
-    const skeleton = new PosableSkeleton(root, config, { requireHands: false });
+    // bindHands (not requireHands) asks the retargeter to bind the finger bones
+    // when the model has them, without rejecting a model that has none. The
+    // horse and the mermaids still load and pose; every humanoid now actually
+    // exposes its fingers to hand export and per-limb mirroring.
+    const skeleton = new PosableSkeleton(root, config, { bindHands: true });
     if (!skeleton.isValid) {
       vp.scene.remove(root);
       throw new Error(
@@ -562,6 +563,11 @@ export function usePosing() {
   const exportResults = ref<ExportResult[]>([]);
   const exportError = ref<string | null>(null);
   const exportSize = ref(2048);
+  // Width and height are separate because a reference image is often not
+  // square: a 16:9 crop for a background plate or a tall portrait crop both
+  // come up, and a single slider could not express either.
+  const exportWidth = ref(2048);
+  const exportHeight = ref(2048);
   const exportTransparent = ref(false);
 
   /**
@@ -607,8 +613,8 @@ export function usePosing() {
         {
           passes,
           options: {
-            width: exportSize.value,
-            height: exportSize.value,
+            width: exportWidth.value,
+            height: exportHeight.value,
             transparent: exportTransparent.value,
             hideHelpers: true,
           },
@@ -1001,6 +1007,7 @@ export function usePosing() {
 
     const skeleton = new PosableSkeleton(cloneRoot, source.config, {
       requireHands: false,
+      bindHands: true,
     });
     // Copy the pose so the duplicate is visibly a second *posed* instance.
     skeleton.applyPose(source.skeleton.getPose(), 0);
@@ -1224,6 +1231,7 @@ export function usePosing() {
 
         const skeleton = new PosableSkeleton(built.root, config, {
           requireHands: false,
+          bindHands: true,
         });
         skeleton.applyPose(spec.pose, spec.rootOffset);
         models.value = [
@@ -1565,6 +1573,8 @@ export function usePosing() {
     exportResults,
     exportError,
     exportSize,
+    exportWidth,
+    exportHeight,
     exportTransparent,
     runExport,
     exportObjNow,
@@ -1647,3 +1657,4 @@ export function usePosing() {
     replayTour,
   };
 }
+

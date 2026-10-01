@@ -56,6 +56,17 @@ export class PosableSkeleton {
     config: ModelLoadConfig,
     options: {
       requireHands?: boolean;
+      /**
+       * Bind the finger bones when the model has them, without requiring them.
+       *
+       * `requireHands` is all-or-nothing: a model missing any finger bone
+       * resolves only the 22 core bones and the hand poses, hand-pose export
+       * and per-limb finger mirroring all silently do nothing. Setting this
+       * instead asks the retargeter to look for the full 62 while still
+       * validating against the core contract, so a handless model (the horse,
+       * the mermaids) loads and poses fine and simply has no fingers.
+       */
+      bindHands?: boolean;
       retarget?: RetargetResult;
       /**
        * Skip IK chain setup. CCDIKSolver needs a SkinnedMesh, so a bone-only
@@ -70,7 +81,10 @@ export class PosableSkeleton {
 
     const retarget =
       options.retarget ??
-      retargetSkeleton(root, { requireHands: options.requireHands ?? false });
+      retargetSkeleton(root, {
+        requireHands: options.requireHands ?? false,
+        bindFingers: options.bindHands ?? false,
+      });
     this.retarget = retarget;
 
     for (const [contractName, match] of retarget.matches) {

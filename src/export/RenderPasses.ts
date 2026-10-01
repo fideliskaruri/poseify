@@ -9,6 +9,7 @@ import * as THREE from "three";
 export type RenderPass =
   | "regular"
   | "openpose"
+  | "openpose-hands"
   | "depth"
   | "canny"
   | "normals";
@@ -16,6 +17,7 @@ export type RenderPass =
 export const RENDER_PASSES: readonly RenderPass[] = [
   "regular",
   "openpose",
+  "openpose-hands",
   "depth",
   "canny",
   "normals",
@@ -24,6 +26,7 @@ export const RENDER_PASSES: readonly RenderPass[] = [
 export const PASS_LABELS: Readonly<Record<RenderPass, string>> = {
   regular: "Regular",
   openpose: "OpenPose",
+  "openpose-hands": "OpenPose (hands)",
   depth: "Depth",
   canny: "Canny",
   normals: "Normals",
@@ -34,6 +37,15 @@ export interface ExportOptions {
   height: number;
   transparent: boolean;
   hideHelpers: boolean;
+  /**
+   * Draw the 32 finger keypoints on the OpenPose pass.
+   *
+   * Optional and defaulting off so every existing caller keeps the body-only
+   * output that ControlNet conditioning expects. The pass name carries the
+   * distinction instead ("openpose" vs "openpose-hands") because the two
+   * differ in payload and in pixels, and a filename should say which.
+   */
+  includeHands?: boolean;
 }
 
 export const DEFAULT_EXPORT: ExportOptions = {
