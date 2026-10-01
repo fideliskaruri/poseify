@@ -232,18 +232,23 @@ describe("validateGeneratedPose", () => {
   });
 });
 
+// Validating all 10,368 combinations is the slow part of this file, so it
+// runs once and the three assertions below read the shared result. Running it
+// per test made the file time out under parallel suite load even though each
+// individual run passed.
+const fullValidation = validateGeneratedPoses(generatePoses(), context);
+
 describe("validateGeneratedPoses over the real library", () => {
   it("ships every combination once validated", () => {
-    const { shipped, issues } = validateGeneratedPoses(generatePoses(), context);
-    expect(shipped.length).toBeGreaterThan(1000);
+    expect(fullValidation.shipped.length).toBeGreaterThan(1000);
     // Every axis combination produces a physically sound figure, so nothing is
     // rejected. The validator exists to catch a regression in the generator,
     // which the cases above prove it does.
-    expect(issues.length).toBe(0);
+    expect(fullValidation.issues.length).toBe(0);
   });
+
   it("leaves every shipped pose with a sound quaternion record", () => {
-    const { shipped } = validateGeneratedPoses(generatePoses(), context);
-    for (const pose of shipped.slice(0, 300)) {
+    for (const pose of fullValidation.shipped.slice(0, 300)) {
       const bones = anglesToPose(pose.angles);
       for (const q of Object.values(bones)) {
         expect(Math.hypot(...q)).toBeCloseTo(1, 8);
@@ -253,8 +258,7 @@ describe("validateGeneratedPoses over the real library", () => {
 
   it("explains every rejection", () => {
     // A silent rejection is a dropped pose nobody can account for.
-    const { issues } = validateGeneratedPoses(generatePoses(), context);
-    for (const issue of issues.slice(0, 50)) {
+    for (const issue of fullValidation.issues.slice(0, 50)) {
       expect(issue.reason.length).toBeGreaterThan(0);
       expect(issue.poseId).toMatch(/^gen_/);
     }

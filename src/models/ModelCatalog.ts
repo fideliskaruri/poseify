@@ -10,6 +10,11 @@
 import { DEFAULT_LOAD_CONFIG, type ModelLoadConfig } from "./ModelLoadConfig";
 import { VENDOR_CATALOG, type VendorEntry } from "./VendorCatalog";
 import { loadModelFromURL } from "./ModelLoader";
+import {
+  PROCEDURAL_CATALOG,
+  buildProceduralModel,
+  proceduralLoadConfig,
+} from "./ProceduralModels";
 import * as THREE from "three";
 
 /**
@@ -136,3 +141,4 @@ export function normaliseToMetres(
 
   return scale;
 }
+

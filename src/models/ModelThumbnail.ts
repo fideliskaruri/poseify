@@ -10,6 +10,10 @@
 
 import * as THREE from "three";
 import { loadModelFromURL } from "./ModelLoader";
+import {
+  PROCEDURAL_CATALOG,
+  buildProceduralModel,
+} from "./ProceduralModels";
 import type { CatalogEntry } from "./ModelCatalog";
 
 const THUMB_SIZE = 128;
@@ -60,10 +64,36 @@ function ensureRenderer(): THREE.WebGLRenderer | null {
   return renderer;
 }
 
+/**
+ * Bounds of a model, measured from its geometry.
+ *
+ * Box3.setFromObject walks the whole hierarchy, which throws on a SkinnedMesh
+ * whose skeleton bones are not all its own descendants - exactly the shape of a
+ * procedurally built figure. Measuring the geometry directly works for both
+ * kinds of model and cannot trip over a parentless bone.
+ */
+function measureBounds(root: THREE.Object3D): THREE.Box3 {
+  const box = new THREE.Box3();
+  const position = new THREE.Vector3();
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const attribute = mesh.geometry?.getAttribute("position");
+    if (!attribute) return;
+    mesh.updateMatrixWorld(true);
+    for (let i = 0; i < attribute.count; i += 1) {
+      position.fromBufferAttribute(attribute as THREE.BufferAttribute, i);
+      box.expandByPoint(mesh.localToWorld(position));
+    }
+  });
+  if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 2, 1));
+  return box;
+}
+
 /** Frame `root` in `cam` so it fills the tile without cropping. */
 function frame(root: THREE.Object3D, cam: THREE.PerspectiveCamera): void {
   root.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(root);
+  const box = measureBounds(root);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
 
@@ -113,24 +143,34 @@ async function buildThumbnail(
 ): Promise<string | null> {
   const gl = ensureRenderer();
   if (!gl || !scene || !camera) return null;
-  if (!config.path) return null;
 
   let root: THREE.Object3D;
-  try {
-    // Reuse the app's own loader so thumbnails and posed models agree on how a
-    // given FBX is interpreted.
-    const loaded = await loadModelFromURL(config.path, {
-      renderer: renderContext?.renderer,
-    });
-    root = loaded.root;
-  } catch {
-    // Missing or corrupt file: leave this tile text-only rather than
-    // rejecting the whole picker.
-    return null;
+  if (config.path) {
+    try {
+      // Reuse the app's own loader so thumbnails and posed models agree on how
+      // a given FBX is interpreted.
+      const loaded = await loadModelFromURL(config.path, {
+        renderer: renderContext?.renderer,
+      });
+      root = loaded.root;
+    } catch {
+      // Missing or corrupt file: leave this tile text-only rather than
+      // rejecting the whole picker.
+      return null;
+    }
+  } else {
+    // Procedural figures have no file: they are built from the rig contract.
+    // Returning null here would leave the licence-clean models as text-only
+    // tiles in the picker, which is the opposite of what they are for.
+    const procedural = PROCEDURAL_CATALOG.find((p) => p.id === config.id);
+    if (!procedural) return null;
+    root = buildProceduralModel(procedural);
   }
 
   try {
-    normaliseForThumbnail(root);
+    // Procedural figures are already authored in metres, so normalising them
+    // the way a vendor FBX is normalised would shrink them out of frame.
+    if (config.path) normaliseForThumbnail(root);
     scene.add(root);
     frame(root, camera);
     gl.render(scene, camera);
@@ -182,3 +222,6 @@ export function clearThumbnailCache(): void {
   cache.clear();
   inFlight.clear();
 }
+
+
+
