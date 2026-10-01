@@ -68,6 +68,7 @@ const {
   exportTransparent,
   runExport,
   exportObjNow,
+  exportSceneObjNow,
   download,
   clearExport,
   poseSearch,
@@ -400,6 +401,20 @@ watch(
             "
           >
             Export OBJ
+          </button>
+          <button
+            type="button"
+            class="chip wide"
+            :disabled="!models.length && !props.length"
+            title="Export every visible model and prop as one OBJ"
+            @click="
+              (() => {
+                const obj = exportSceneObjNow();
+                if (obj) download(obj.filename, obj.text);
+              })()
+            "
+          >
+            Export scene OBJ
           </button>
         </div>
         <div class="tags pass-tags">

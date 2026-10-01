@@ -90,6 +90,10 @@ export function exportObj(
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!(mesh as { isMesh?: boolean }).isMesh) return;
+    // A hidden mesh is not part of what the artist can see, so it is not part
+    // of the export. Skipping it here means the whole-scene path and the
+    // figure-only path agree about visibility.
+    if (!obj.visible) return;
     const geometry = mesh.geometry as THREE.BufferGeometry | undefined;
     const position = geometry?.getAttribute("position");
     if (!geometry || !position) return;
@@ -175,6 +179,95 @@ export function exportObj(
     if (uv) uvOffset += uv.count;
     if (includeNormals) normalOffset += position.count;
   });
+
+  return `${out.join("\n")}\n`;
+}
+
+/**
+ * Shift one OBJ face corner past the vertices written so far.
+ *
+ * A corner is v, v/vt, v//vn or v/vt/vn. Positive indices are relative to the
+ * object that declared them and must become absolute across the merged file;
+ * negative indices already count back from the end of the file and stay put.
+ */
+function shiftCorner(
+  corner: string,
+  vertexOffset: number,
+  normalOffset: number,
+  uvOffset: number,
+): string {
+  const [v, vt, vn] = corner.split("/");
+  const shift = (
+    value: string | undefined,
+    offset: number,
+  ): string | undefined => {
+    if (value === undefined || value === "") return undefined;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return value;
+    return String(n + offset - 1);
+  };
+  const sv = shift(v, vertexOffset) ?? v;
+  const svt = shift(vt, uvOffset);
+  const svn = shift(vn, normalOffset);
+  // Preserve arity: v/vt/vn and v//vn are different to importers.
+  if (vt === undefined) return sv;
+  if (vn === undefined) return `${sv}/${svt ?? ""}`;
+  return `${sv}/${svt ?? ""}/${svn ?? ""}`;
+}
+
+export interface SceneObjSource {
+  name: string;
+  root: THREE.Object3D;
+}
+
+/**
+ * Export every mesh in a scene as one OBJ, models and props together.
+ *
+ * PoseMy.Art exports the whole composition so a prop-built scene can leave the
+ * app. exportObj already bakes world transforms per object, which is exactly
+ * the per-object work; this concatenates several hierarchies, shifting each
+ * object's face indices past everything written before it, because OBJ indices
+ * are absolute across the file rather than per object.
+ */
+export function exportSceneObj(
+  sources: readonly SceneObjSource[],
+  options: ObjExportOptions = {},
+): string {
+  const { name = "scene" } = options;
+  const out: string[] = ["# Poseify scene export", `o ${name}`];
+  let vertexOffset = 1;
+  let normalOffset = 1;
+  let uvOffset = 1;
+
+  for (const source of sources) {
+    const text = exportObj(source.root, { ...options, name: source.name });
+    const vertices = (text.match(/^v /gm) ?? []).length;
+    const normals = (text.match(/^vn /gm) ?? []).length;
+    const uvs = (text.match(/^vt /gm) ?? []).length;
+
+    // An object with no geometry is skipped rather than emitted as an empty
+    // group, so a hidden or unloaded prop leaves no stub in the file.
+    if (vertices === 0) continue;
+
+    out.push(`# ${source.name}`);
+    for (const line of text.split("\n")) {
+      if (line.startsWith("v ") || line.startsWith("vn ") || line.startsWith("vt ")) {
+        out.push(line);
+      } else if (line.startsWith("f ")) {
+        const faces = line
+          .slice(2)
+          .trim()
+          .split(/\s+/)
+          .map((corner) =>
+            shiftCorner(corner, vertexOffset, normalOffset, uvOffset),
+          );
+        out.push(`f ${faces.join(" ")}`);
+      }
+    }
+    vertexOffset += vertices;
+    normalOffset += normals;
+    uvOffset += uvs;
+  }
 
   return `${out.join("\n")}\n`;
 }

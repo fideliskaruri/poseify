@@ -22,6 +22,8 @@ import {
   exportPasses,
   type ExportResult,
 } from "../export/Exporter";
+import { exportSceneObj, type SceneObjSource } from "../export/ObjExport";
+import type { ObjExportResult } from "../export/Exporter";
 import { POSE_LIBRARY } from "../pose/PoseLibrary";
 import { PoseClipboard, randomPoseIndex } from "../pose/PoseClipboard";
 import {
@@ -655,6 +657,41 @@ export function usePosing() {
     }
     exportError.value = null;
     return exportModelObj(active.skeleton, active.config.id);
+  }
+
+  /**
+   * Export the whole scene to OBJ, models and props together.
+   *
+   * Hidden objects are excluded: an OBJ is a baked snapshot of what the artist
+   * can currently see, and a hidden figure still exporting would be a silent
+   * surprise. Figure-only export stays available as exportObjNow.
+   */
+  function exportSceneObjNow(): ObjExportResult | null {
+    const sources: SceneObjSource[] = [];
+    for (const m of models.value) {
+      if (isHidden(m.root)) continue;
+      if (!m.config.exportable) continue;
+      sources.push({ name: m.config.id, root: m.skeleton.root });
+    }
+    for (const p of props.value) {
+      if (isHidden(p.root)) continue;
+      sources.push({ name: p.config.id || p.config.name, root: p.root });
+    }
+    if (sources.length === 0) {
+      exportError.value =
+        "Nothing visible to export. Add a model or prop and make sure it is not hidden.";
+      return null;
+    }
+    exportError.value = null;
+    const text = exportSceneObj(sources, {
+      name: sceneName.value.replace(/[^\w.-]+/g, "-") || "poseify-scene",
+    });
+    return {
+      filename: `${sceneName.value.replace(/[^\w.-]+/g, "-") || "poseify-scene"}.obj`,
+      text,
+      vertexCount: (text.match(/^v /gm) ?? []).length,
+      faceCount: (text.match(/^f /gm) ?? []).length,
+    };
   }
 
   /** Trigger a browser download for a PNG data URL or a text payload. */
@@ -1593,6 +1630,7 @@ export function usePosing() {
     exportTransparent,
     runExport,
     exportObjNow,
+    exportSceneObjNow,
     download,
     clearExport,
     poseSearch,

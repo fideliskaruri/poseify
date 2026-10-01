@@ -21,7 +21,7 @@ import {
   extractCoco18,
   type Keypoint2D,
 } from "./OpenPose";
-import { exportObj } from "./ObjExport";
+import { exportObj, exportSceneObj, type SceneObjSource } from "./ObjExport";
 
 export interface ExportTarget {
   renderer: THREE.WebGLRenderer;
@@ -256,6 +256,25 @@ export function exportModelObj(
   name?: string,
 ): ObjExportResult {
   const text = exportObj(skeleton.root, { name: fileBase(name) });
+  return {
+    filename: `${fileBase(name)}.obj`,
+    text,
+    vertexCount: (text.match(/^v /gm) ?? []).length,
+    faceCount: (text.match(/^f /gm) ?? []).length,
+  };
+}
+
+/**
+ * Export the whole scene to OBJ: every model and every prop, posed and placed.
+ *
+ * Separate from exportModelObj rather than replacing it, because a figure-only
+ * export is still the common case for bringing one pose into Blender.
+ */
+export function exportSceneObjNow(
+  sources: readonly SceneObjSource[],
+  name?: string,
+): ObjExportResult {
+  const text = exportSceneObj(sources, { name: fileBase(name) });
   return {
     filename: `${fileBase(name)}.obj`,
     text,
