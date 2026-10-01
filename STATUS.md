@@ -29,7 +29,10 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | P1 — object transform + object ops | **PARTIAL** | see below |
 | P2 — pose surgery | **PARTIAL** | logic complete and tested; UI wired; browser check outstanding (see note) |
 | P3 — export completeness | **PASS** | all four items built; with/without hands and Preview Depth browser-verified; scene OBJ test-verified (download bytes unreadable in this browser) |
-| P4–P8 | **TODO** | not started |
+| P4a — camera | **PASS** | lock/reset/presets/screenshot built; preset persistence and lock verified in-browser |
+| P4b — licence-clean model path | **TODO** | not started |
+| P5 — hand posing | **PASS** | 9 poses x 2 sides, independent payload, 1e-12 body-independence asserted |
+| P6–P8 | **TODO** | not started |
 
 ### Phase 1 detail
 
@@ -99,6 +102,81 @@ browser timed out (`Page.getFrameTree`, `Runtime.evaluate`,
 "operation exceeded its deadline"). The same browser session earlier in the
 run completed the same flows, so this is host contention rather than an app
 fault. It should be re-run once the machine is quiet.
+
+### Phase 5 detail
+
+Hand posing, the largest remaining subsystem. PoseMy.Art treats the hand as a
+separate payload from the body; Poseify had the 42 finger bones in its rig
+contract and no way to author, store or apply a hand pose at all.
+
+Built in `src/pose/HandPose.ts` and `src/pose/HandPoseLibrary.ts` (both new),
+extended `src/posing/PosableSkeleton.ts`, wired through
+`src/composables/usePosing.ts` and a new Hand poses panel in `src/App.vue`:
+
+- **`HandPose` is its own payload** with a `side`, not more bones on the body
+  pose. Bolting fingers onto the body record would make every hand change a
+  body-pose change, which is exactly the coupling the separate channel exists
+  to avoid.
+- **Separate skeleton entry points.** `applyHandPose`, `getHandPose` and
+  `resetHandPose` never pass through `applyPose`, so the two channels cannot
+  interfere.
+- **Nine starter poses for both sides**, authored in degrees per finger bone in
+  the same readable format as `PoseLibrary`: relaxed open hand, loose fist,
+  pointing, peace sign, gripping cylinder, gripping sphere, flat palm, prayer,
+  thumbs up. The right hand is **mirrored** from the authored left rather than
+  hand-duplicated, which is how two sides drift apart.
+- **`handAnglesToPose` refuses non-finger bones**, so a hand pose cannot
+  silently widen into a body pose.
+- **Fails loudly on a handless model.** The horse and the mermaids have no
+  finger bones; applying a hand pose to them names exactly which bones are
+  missing instead of doing nothing, matching how `applyPose` already reports.
+
+| Check | Result |
+|---|---|
+| `npm test` | **392 passed / 392** (was 367) |
+| `npm run typecheck` | clean |
+| `npm run build` | succeeds |
+| Test: library ships 9 poses per side, 18 total | **PASS** |
+| Test: every authored bone is a real finger bone | **PASS** |
+| Test: every emitted quaternion is unit length | **PASS** |
+| Test: right hand is mirrored, not copied | **PASS** |
+| Test: applying a hand pose leaves every body bone bit-identical (1e-12) | **PASS** |
+| Test: hand pose transfers across two differently-built rigs to 1e-6 | **PASS** |
+| Test: `withoutHandBones` strips wrists as well as fingers | **PASS** |
+| Test: handless model reports missing bones instead of throwing | **PASS** |
+| Browser: Hand poses panel renders all nine | **PASS** |
+| Browser: Left/Right toggle, `Applied Loose fist to the left hand` | **PASS** |
+| Browser: right side, `Applied Pointing to the right hand` | **PASS** |
+
+One wart recorded rather than hidden: on a body-only rig the retargeter can
+claim a single spare bone for a finger name when an unconsumed candidate is left
+over. The test tolerates it and says why, because what matters is that the
+failure is reported rather than silent.
+
+### Phase 4a detail
+
+- **Camera lock** disables orbit input *and* damping. Disabling input alone still
+  lets the camera drift for a frame or two as `OrbitControls` integrates its
+  remaining velocity, which reads as a lock that does not work.
+- **Named presets** persist in `Preferences`, validated on read: localStorage is
+  user-editable and outlives any app version, so a NaN coordinate or a zero fov
+  would otherwise reach `PerspectiveCamera` and leave an unusable viewport.
+  Upserting by name is what makes pressing Save twice safe.
+- **Screenshot** captures the viewport as-is, including grid, light gizmo and
+  prop helpers, which is deliberately different from an export pass that hides
+  them.
+
+**A gap in the typecheck gate, worth recording:** `vue-tsc` reported clean while
+`App.vue` had an unclosed `<section>`, so a malformed template reached the browser
+as a blank page with no console error. Only `vite build` caught it. Template
+validity is not covered by `npm run typecheck`.
+
+| Check | Result |
+|---|---|
+| Test count | **367 passed / 367** at this point |
+| Browser: camera panel renders Lock / Reset / Screenshot / presets | **PASS** |
+| Browser: preset "Low Angle" saves, lists, and survives a page reload | **PASS** |
+| Browser: Lock toggles to Unlock with active state and back | **PASS** |
 
 ### Phase 3 detail (in progress)
 
@@ -706,3 +784,4 @@ catch now includes the underlying message.
 - Node v26.5.1, npm 11.17.0, git 2.55.0
 - Blender 5.2 installed at `C:\Program Files\Blender Foundation\Blender 5.2`
   (M3 asset generation path; procedural, no addon dependency)
+
