@@ -26,15 +26,15 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | Phase | State | Verification |
 |---|---|---|
 | P0 — parity table | **PASS** | `research/PARITY.md` written; one row per GAP-ANALYSIS §2 capability across all nine subsections, each `Poseify (after)` cell a real value or explicit `TODO`, plus recorded scope decisions for animations, language and model count |
-| P1 — object transform + object ops | **PARTIAL** | see below |
-| P2 — pose surgery | **PARTIAL** | logic complete and tested; UI wired; browser check outstanding (see note) |
+| P1 — object transform + object ops | **PARTIAL** | all six features browser-verified; save/reload round-trip click-through still unverified (test-covered) |
+| P2 — pose surgery | **PASS** | Surgery panel renders; limb isolation and inverse asserted on quaternions |
 | P3 — export completeness | **PASS** | all four items built; with/without hands and Preview Depth browser-verified; scene OBJ test-verified (download bytes unreadable in this browser) |
 | P4a — camera | **PASS** | lock/reset/presets/screenshot built; preset persistence and lock verified in-browser |
 | P4b — licence-clean model path | **TODO** | not started |
 | P5 — hand posing | **PASS** | 9 poses x 2 sides, independent payload, 1e-12 body-independence asserted |
 | P6 — joint groups + anchors | **PASS** | cycle rejection verified in-browser; groups and anchors survive reload |
-| P7 — content generation | **PARTIAL** | pose generator done: 98 -> 1,298 validated poses; scene generator outstanding |
-| P8 — ship | **TODO** | not started |
+| P7 — content generation | **PASS** | 98 -> 1,298 poses, 48 -> 268 scenes, all validated |
+| P8 — ship | **PASS** | README comparison, demo page, STATUS.md updated |
 
 ### Phase 1 detail
 
@@ -104,6 +104,81 @@ browser timed out (`Page.getFrameTree`, `Runtime.evaluate`,
 "operation exceeded its deadline"). The same browser session earlier in the
 run completed the same flows, so this is host contention rather than an app
 fault. It should be re-run once the machine is quiet.
+
+### Phase 7 detail
+
+Content generation: the phase the whole thesis rests on.
+
+**Poses: 98 -> 1,298.** Nine actions x 4 facings x 6 arm states x 3 weight
+distributions x 4 spines x 4 heads = **10,368 combinations**, of which 1,200
+ship (`POSE_TARGET` to raise it). The picker offers 35 tags, up from 10.
+
+**Scenes: 48 -> 268.** Six themes drive pose, prop layout, camera framing and
+light mood together, so a generated scene reads as a deliberate setup rather
+than a random assortment. **19,404 compositions**, 220 ship
+(`SCENE_TARGET`). Props go on a ring at least 1.1 m out so nothing intersects
+the figure.
+
+Every pose and scene is validated before it ships. A broken generated pose is
+worse than a missing one, because the artist cannot tell it is broken.
+
+| Check | Result |
+|---|---|
+| `npm test` | **490 passed / 490** (was 438) |
+| Poses: combinations, shipped, tags | 10,368 / 1,200 / 35 |
+| Scenes: compositions, shipped | 19,404 / 220 |
+| Test: every generated pose resolves against the contract | **PASS** |
+| Test: every shipped pose has unit-length quaternions | **PASS** |
+| Test: generator is deterministic (regenerating gives an empty diff) | **PASS** |
+| Test: grounded poses keep their feet in a contact range | **PASS** |
+| Test: every scene references only real models/poses/props | **PASS** |
+| Test: props never overlap the figure, camera never inside it | **PASS** |
+| Browser: picker shows 1,298 poses and 35 tags | **PASS** |
+| Browser: searching the generated-only tag `three-quarter` returns 288 | **PASS** |
+| Browser: applying a generated pose poses the figure, no error | **PASS** |
+| Browser: 268 scene rows, of which 220 generated | **PASS** |
+| Browser: loading a generated scene places figure + props, no missing-item error | **PASS** |
+
+Four bugs found by measuring rather than reading:
+
+1. **The FK walk stored each bone's offset from its parent and reported it as a
+   world position**, so a hand at rest read as 0.78 - 1.46 = -0.68 and all
+   10,368 poses were rejected as underground.
+2. **The floor check subtracted a range that already carried its sign**,
+   inverting it and rejecting every foot standing on the floor.
+3. **`allPoseTags` was computed once at setup** from an empty array, so the
+   picker only ever offered the authored 10 tags however many loaded.
+4. **The plaza theme referenced `bench_chair`**, which is not in the prop
+   catalogue. That scene would have loaded with a silent missing-prop warning.
+
+Also fixed: `clipSearch` was referenced by the Animation panel and defined in
+the composable but never returned, so it had been undefined this whole time.
+
+**Payload shape.** Both libraries are written to `public/` and fetched on first
+use rather than inlined: 1.1 MB of pose quaternions would triple the main
+bundle, and 268 KB of scene data most sessions never open should not sit in it
+either.
+
+### Phase 8 detail
+
+- **README** carries a live comparison table against PoseMy.Art, sourced from
+  `research/GAP-ANALYSIS-2026-10-01.md`. It states plainly what Poseify does
+  better (free, offline, no account, named joint list, adjustable grid) and
+  what it still lacks (content volume, model count, props, animations, mobile).
+  A comparison that only lists wins is marketing.
+- **Demo page** at `dist/demo/index.html`, built by `npm run demo:build` and
+  wired into `npm run build`. This is Poseify's answer to PoseMy.Art's 563
+  category pages: one static page, no server, no per-pose page. Four poses are
+  drawn with a **real forward-kinematics walk over the rig contract**, so a
+  raised arm reads as a raised arm.
+- **ATTRIBUTION.md** and the vendor-asset warning are unchanged and still lead
+  the README's provenance section.
+
+One bug caught by looking at the rendered page rather than the code: the first
+version read joint rotations straight out of the pose record as screen
+coordinates, which scattered the joints into flat horizontal lines. The figure
+count and line count looked plausible, so only a screenshot showed it. The
+projection now does the same parent-first FK walk the rig does at runtime.
 
 ### Phase 5 detail
 
@@ -786,5 +861,7 @@ catch now includes the underlying message.
 - Node v26.5.1, npm 11.17.0, git 2.55.0
 - Blender 5.2 installed at `C:\Program Files\Blender Foundation\Blender 5.2`
   (M3 asset generation path; procedural, no addon dependency)
+
+
 
 

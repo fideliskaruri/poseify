@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vue-tsc --noEmit && vite build && npm run demo:build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
@@ -18,7 +18,8 @@
     "models:verify": "vite-node tools/verify-models.ts",
     "clips:build": "vite-node tools/build-clips.ts",
     "poses:generate": "vite-node tools/build-pose-library.ts",
-    "scenes:generate": "vite-node tools/build-scene-library.ts"
+    "scenes:generate": "vite-node tools/build-scene-library.ts",
+    "demo:build": "vite-node tools/build-demo.ts"
   },
   "dependencies": {
     "three": "^0.169.0"
@@ -34,5 +35,7 @@
     "vue-tsc": "^2.1.10"
   }
 }
+
+
 
 
