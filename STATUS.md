@@ -28,7 +28,7 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | P0 — parity table | **PASS** | `research/PARITY.md` written; one row per GAP-ANALYSIS §2 capability across all nine subsections, each `Poseify (after)` cell a real value or explicit `TODO`, plus recorded scope decisions for animations, language and model count |
 | P1 — object transform + object ops | **PARTIAL** | see below |
 | P2 — pose surgery | **PARTIAL** | logic complete and tested; UI wired; browser check outstanding (see note) |
-| P3 — export completeness | **PARTIAL** | OpenPose with/without hands + separate W/H done and browser-verified; Preview Depth and scene OBJ outstanding |
+| P3 — export completeness | **PASS** | all four items built; with/without hands and Preview Depth browser-verified; scene OBJ test-verified (download bytes unreadable in this browser) |
 | P4–P8 | **TODO** | not started |
 
 ### Phase 1 detail
@@ -141,10 +141,31 @@ wrong" failure mode this file's discipline exists to catch:
 | Test: every `HAND_LIMBS` index is in range and non-degenerate | **PASS** |
 | Test: each hand anchors to its COCO-18 wrist | **PASS** |
 | Test: body-only model degrades to wrist, not image origin | **PASS** |
-| Browser: Preview Depth toggle, scene OBJ | **TODO** |
+| Browser: Preview Depth toggle | **PASS** — canvas region byte-identical after ten on/off cycles |
+| Test: Preview Depth restores a foreign override exactly, 10 cycles | **PASS** |
+| Test: scene OBJ offsets second object's indices past the first | **PASS** |
+| Test: scene OBJ contains figure *and* prop; hidden prop omitted | **PASS** |
+| Browser: scene OBJ download bytes | **UNVERIFIED** — in-app browser does not surface the download event, so the file could not be read back; the button renders and the contents are test-covered |
 
-Outstanding for Phase 3: **Preview Depth** live toggle, and **Export Scene to
-OBJ** walking models *and* props rather than only the posed figure.
+Also added in this phase, both required by the objective:
+
+- **Preview Depth**, a live toggle that swaps the viewport to the same depth
+  shader the export pass uses. `DepthPreview` is split out of `Viewport` so the
+  state discipline is testable without a GL context. The invariant: whatever
+  override material was installed before the preview goes on is exactly what is
+  installed after it comes off — an export in flight installs its own override,
+  so restoring to `null` would clobber it. `set()` is idempotent, so a repeated
+  call cannot capture the preview's own material as the "previous" override.
+- **Export Scene to OBJ**, walking models *and* props. `exportObj` already bakes
+  world transforms per hierarchy, so `exportSceneObj` concatenates several and
+  shifts each object's face indices past everything written before it. OBJ
+  indices are absolute across the file, not per object: without the shift the
+  second object's faces reuse the first object's range and the file still
+  imports cleanly while rendering the wrong geometry.
+
+A third real defect was found here by a test rather than by reading: `exportObj`
+traversed every mesh regardless of visibility, so a **hidden prop still
+exported**. An OBJ is a baked snapshot of what the artist can see.
 
 ### Phase 2 detail
 
