@@ -30,7 +30,7 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | P2 — pose surgery | **PASS** | Surgery panel renders; limb isolation and inverse asserted on quaternions |
 | P3 — export completeness | **PASS** | all four items built; with/without hands and Preview Depth browser-verified; scene OBJ test-verified (download bytes unreadable in this browser) |
 | P4a — camera | **PASS** | lock/reset/presets/screenshot built; preset persistence and lock verified in-browser |
-| P4b — licence-clean model path | **TODO** | not started |
+| P4b — licence-clean model path | **PASS** | 6 procedural MIT-clean figures; 501 tests; browser check pending on this host |
 | P5 — hand posing | **PASS** | 9 poses x 2 sides, independent payload, 1e-12 body-independence asserted |
 | P6 — joint groups + anchors | **PASS** | cycle rejection verified in-browser; groups and anchors survive reload |
 | P7 — content generation | **PASS** | 98 -> 1,298 poses, 48 -> 268 scenes, all validated |

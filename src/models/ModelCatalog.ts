@@ -31,6 +31,10 @@ export interface CatalogEntry extends ModelLoadConfig {
  * humans first, then stylized, then bots, then creatures.
  */
 export const MODEL_CATALOG: readonly CatalogEntry[] = [
+  // Procedural figures lead deliberately: they are MIT-clean, need no
+  // download, and are present in a fresh clone with no network at all. The
+  // vendor FBX set follows and remains the way to get realistic bodies.
+  ...PROCEDURAL_CATALOG.map((p) => proceduralLoadConfig(p)),
   ...VENDOR_CATALOG.map((v) => v as CatalogEntry),
 ];
 
@@ -60,9 +64,15 @@ export async function loadModel(
   options: { renderer?: THREE.WebGLRenderer } = {},
 ): Promise<InstantiatedModel> {
   if (!config.path) {
-    throw new Error(
-      `Model "${config.id}" has no path; every Poseify model is a vendor FBX.`,
-    );
+    // Procedural figures carry no path: they are built from the rig contract
+    // rather than downloaded, so they are constructed here instead of fetched.
+    const procedural = PROCEDURAL_CATALOG.find((p) => p.id === config.id);
+    if (!procedural) {
+      throw new Error(
+        `Model "${config.id}" has no path and is not a procedural figure.`,
+      );
+    }
+    return { root: buildProceduralModel(procedural), bones: new Map() };
   }
 
   const { root } = await loadModelFromURL(config.path, options);
