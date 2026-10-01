@@ -1,0 +1,187 @@
+# Poseify
+
+A free, open-source, browser-based 3D pose reference tool for artists.
+
+Poseify is an independent reimplementation of the workflow offered by
+PoseMy.Art. It is not affiliated with, endorsed by, or connected to that
+project. Load a rigged humanoid, pose it with forward or inverse kinematics,
+stage it with props, scrub through motion capture, and export reference images
+for use as conditioning input.
+
+Everything runs in the browser. There is no account, no server, and no cost.
+
+---
+
+## Features
+
+- **33 reference models** — realistic, anime, stylized, chibi, bot, skeleton,
+  creature and animal, all rigged to a shared skeleton contract.
+- **Two posing modes** — forward kinematics via a rotation gizmo on any joint,
+  and inverse kinematics for dragging hands and feet.
+- **98 authored poses** across ten categories, with search and tag filtering.
+- **130 motion capture clips** with play, pause, scrub and frame stepping.
+  Scrubbing to a frame freezes it as a static pose.
+- **Props and image planes** — a procedural CC0 prop set plus OBJ/GLB import,
+  with floor and contact-point snapping.
+- **Five export passes** — Regular, OpenPose (COCO-18), Depth, Canny and
+  Normals, at up to 2048x2048, plus Wavefront OBJ export of the posed figure.
+- **Scenes** — 48 premade scenes, plus save/load to browser storage or JSON
+  files, and undo/redo.
+- **Camera and light control** — field of view for dramatic perspective,
+  spherical light direction with a visible gizmo, and an adjustable ground
+  grid.
+
+## Getting started
+
+Requires Node.js 20 or newer.
+
+```bash
+npm install
+npm run dev
+```
+
+`npm install` also downloads the model and motion-capture assets on first
+run. That is a one-time step: roughly 90 MB over the network, the rest is
+local. If the download fails the install still succeeds and the app still
+runs, just with an empty model and animation library. Re-run `npm run setup`
+when you are back online.
+
+Open the URL Vite prints, usually <http://localhost:5173>.
+
+### Other commands
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Development server with hot reload |
+| `npm run build` | Type check and production build |
+| `npm run preview` | Serve the production build locally |
+| `npm test` | Run the test suite |
+| `npm run typecheck` | Type check only |
+| `npm run setup` | Fetch assets without a full install |
+| `npm run models:fetch` | Download the model FBX files only |
+| `npm run models:verify` | Check every model against the rig contract |
+| `npm run clips:build` | Download and convert the mocap clips only |
+
+## How it works
+
+The one architectural decision everything else depends on is the **rig
+contract** in `src/rig/RigContract.ts`: 22 body bones plus 40 finger bones
+using the Mixamo/Maya humanoid naming convention.
+
+Because every model, pose and clip is normalised onto that same contract:
+
+- A pose authored on one model applies to any other, unchanged.
+- Retargeting is a straight quaternion copy rather than a per-bone solve.
+- Motion capture clips drive any rig without re-authoring.
+
+`src/rig/Retargeter.ts` normalises an arbitrary skeleton onto the contract in
+three passes: exact name match, alias match (namespace-stripped, with side and
+part detection), then a parent-first hierarchy and bone-length heuristic. Bones
+it cannot resolve confidently are reported rather than guessed at.
+
+## Asset provenance
+
+**Read this before redistributing Poseify.**
+
+### Model FBX files — not CC0, not MIT
+
+The 33 model files under `public/vendor/pose-my-art/` are the property of
+PoseMy.Art. They are **not** covered by this project's MIT licence and are
+**not** released under CC0. They are gitignored and downloaded at install time
+by `tools/fetch-models.ts`.
+
+If you fork or publish this repository you must either delete
+`public/vendor/pose-my-art/` or substitute assets you have the right to
+distribute.
+
+| File | Size | Family |
+|---|---|---|
+| `male_mannequin_OP_IK.fbx` | 1.79 MB | mannequin |
+| `realistic_woman_OP_IK.fbx` | 7.88 MB | realistic |
+| `realistic_muscular_male_OP_IK.fbx` | 4.73 MB | realistic |
+| `female_musculer_OP_IK.fbx` | 1.32 MB | realistic |
+| `male_brute_OP_IK.fbx` | 4.45 MB | brute |
+| `male_stocky_OP_IK.fbx` | 2.11 MB | stocky |
+| `female_stocky_OP_IK.fbx` | 1.32 MB | stocky |
+| `male_skinny_OP_IK.fbx` | 1.70 MB | skinny |
+| `female_skinny_OP_IK.fbx` | 1.40 MB | skinny |
+| `male_teen_fit_OP_IK.fbx` | 2.09 MB | teen |
+| `female_teen_fit_OP_IK.fbx` | 4.44 MB | teen |
+| `male_age_10_OP_IK.fbx` | 1.75 MB | child |
+| `anime_child_boy_OP_IK.fbx` | 0.92 MB | anime |
+| `anime_child_girl_OP_IK.fbx` | 4.53 MB | anime |
+| `anime_female_OP_IK.fbx` | 0.93 MB | anime |
+| `anime_basic_female_OP_IK.fbx` | 0.93 MB | anime |
+| `anime_basic_male_OP_IK.fbx` | 0.93 MB | anime |
+| `anime_tall_male_OP_IK.fbx` | 0.92 MB | anime |
+| `anime_tall_busty_female_OP_IK.fbx` | 0.93 MB | anime |
+| `anime_big_breast_OP_IK.fbx` | 0.90 MB | anime |
+| `chibi_male_OP_IK.fbx` | 1.14 MB | chibi |
+| `skeleton_OP_IK.fbx` | 1.14 MB | skeleton |
+| `zombie_alien_OP_IK.fbx` | 1.68 MB | creature |
+| `horse.fbx` | 0.66 MB | animal |
+| `werewolf_IK.fbx` | 1.21 MB | creature |
+| `male_mermaid_IK.fbx` | 0.77 MB | creature |
+| `female_mermaid_IK.fbx` | 0.80 MB | creature |
+| `new_Y_bot_OP_IK.fbx` | 2.56 MB | bot |
+| `new_X_bot_OP_IK.fbx` | 2.27 MB | bot |
+| `y_bot_fixed_OP_IK.fbx` | 2.60 MB | bot |
+| `x_bot_fixed_OP_IK.fbx` | 2.32 MB | bot |
+| `ybot_opt.fbx` | 2.16 MB | bot |
+| `xbot_opt.fbx` | 1.89 MB | bot |
+
+Total: 33 files, 67.2 MB. Exact source URLs and byte sizes are recorded in
+`public/vendor/pose-my-art/manifest.json`.
+
+Of the 85 model filenames in the source catalogue, 33 are reachable; the rest
+return HTTP 403, including the entire `_OP_Y_IK` rig variant family.
+
+### Motion capture — free for all uses
+
+The 130 clips are converted at build time from the
+[CMU Graphics Lab Motion Capture Database](http://mocap.cs.cmu.edu/), whose
+stated terms are "free for all uses". Source ASF/AMC files are gitignored;
+`tools/build-clips.ts` downloads and converts them into per-frame quaternions
+on the rig contract.
+
+### Original work, MIT licensed
+
+- All application source code.
+- The prop set (chair, table, barrel, sword, ball, crate, and three
+  primitives) is generated from primitives in `src/props/PropCatalog.ts`.
+- The 98-pose library is authored in `src/pose/PoseLibrary.ts` as readable
+  joint angles.
+- The 48 premade scenes in `src/scene/PremadeScenes.ts`.
+
+### Third-party software
+
+| Component | Licence |
+|---|---|
+| [three.js](https://github.com/mrdoob/three.js) | MIT |
+| [Vue](https://github.com/vuejs/core) | MIT |
+| [Vite](https://github.com/vitejs/vite) | MIT |
+| [Vitest](https://github.com/vitest-dev/vitest) | MIT |
+
+Draco and KTX2 decoders are fetched at runtime from public CDNs and are part
+of three.js (MIT). The FBX models do not use either compression.
+
+## Project layout
+
+```
+src/
+  rig/         Skeleton contract and the retargeter
+  models/      Model catalogue, loaders, thumbnails
+  posing/      Forward/inverse kinematics and the bone gizmo
+  pose/        Pose data model, authoring helpers, pose library
+  anim/        ASF/AMC parsing, clip format, playback
+  props/       Prop system, procedural prop set, image planes
+  scene/       Camera/light/grid, scenes, history, premade scenes
+  export/      Render passes, OpenPose keypoints, OBJ export
+  renderer/    WebGL viewport
+tools/         Asset fetching, clip building, model verification
+```
+
+## Licence
+
+MIT for the source code. The model FBX files are excluded; see Asset
+provenance above and `ATTRIBUTION.md`.
