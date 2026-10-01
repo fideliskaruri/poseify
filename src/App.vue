@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { usePosing } from "./composables/usePosing";
 import type { CatalogEntry } from "./models/ModelCatalog";
-import { PREMADE_SCENES } from "./scene/PremadeScenes";
 import { SHORTCUT_HELP } from "./prefs/Shortcuts";
 import { isHidden, isLocked } from "./scene/ObjectState";
 import { PASS_LABELS, type RenderPass } from "./export/RenderPasses";
@@ -113,6 +112,9 @@ const {
   poseLibraryError,
   generatedPoseCount,
   loadGeneratedLibrary,
+  allPremadeScenes,
+  loadGeneratedSceneLibrary,
+  sceneLibraryError,
   poseThumbs,
   allPoseTags,
   visiblePoses,
@@ -183,6 +185,7 @@ onMounted(() => {
   void loadClips();
   refreshSavedScenes();
   void loadGeneratedLibrary();
+  void loadGeneratedSceneLibrary();
 });
 
 onMounted(() => {
@@ -269,7 +272,7 @@ function onSceneFile(event: Event): void {
   input.value = "";
 }
 
-const premadeScenes = PREMADE_SCENES;
+const premadeScenes = allPremadeScenes;
 const shortcutHelp = SHORTCUT_HELP;
 
 // Render thumbnails lazily: only the poses currently visible in the picker,

@@ -106,6 +106,7 @@ import {
 } from "../scene/ObjectState";
 import { History, historyShortcut } from "../scene/History";
 import { PREMADE_SCENES } from "../scene/PremadeScenes";
+import { loadGeneratedScenes } from "../scene/GeneratedScenes";
 import {
   deleteScene,
   downloadScene,
@@ -1729,8 +1730,28 @@ export function usePosing() {
     }
   }
 
+  // Phase 7: the generated scene library, fetched once and concatenated onto
+  // the authored premade scenes.
+  const generatedSceneList = shallowRef<readonly SceneState[]>([]);
+  const sceneLibraryError = ref<string | null>(null);
+
+  async function loadGeneratedSceneLibrary(): Promise<void> {
+    try {
+      generatedSceneList.value = await loadGeneratedScenes();
+      sceneLibraryError.value = null;
+    } catch (err) {
+      sceneLibraryError.value = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /** Every loadable scene, authored first so curated setups lead the list. */
+  const allPremadeScenes = computed<readonly SceneState[]>(() => [
+    ...PREMADE_SCENES,
+    ...generatedSceneList.value,
+  ]);
+
   async function loadPremadeScene(name: string): Promise<void> {
-    const scene = PREMADE_SCENES.find((s) => s.name === name);
+    const scene = allPremadeScenes.value.find((s) => s.name === name);
     if (!scene) {
       sceneError.value = `Unknown scene: ${name}`;
       return;
@@ -2110,6 +2131,9 @@ export function usePosing() {
     commit,
     undo,
     redo,
+    allPremadeScenes,
+    loadGeneratedSceneLibrary,
+    sceneLibraryError,
     loadPremadeScene,
     refreshSavedScenes,
     saveCurrentScene,
@@ -2138,6 +2162,7 @@ export function usePosing() {
     replayTour,
   };
 }
+
 
 
 

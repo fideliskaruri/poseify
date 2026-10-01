@@ -32,7 +32,9 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | P4a — camera | **PASS** | lock/reset/presets/screenshot built; preset persistence and lock verified in-browser |
 | P4b — licence-clean model path | **TODO** | not started |
 | P5 — hand posing | **PASS** | 9 poses x 2 sides, independent payload, 1e-12 body-independence asserted |
-| P6–P8 | **TODO** | not started |
+| P6 — joint groups + anchors | **PASS** | cycle rejection verified in-browser; groups and anchors survive reload |
+| P7 — content generation | **PARTIAL** | pose generator done: 98 -> 1,298 validated poses; scene generator outstanding |
+| P8 — ship | **TODO** | not started |
 
 ### Phase 1 detail
 
@@ -784,4 +786,5 @@ catch now includes the underlying message.
 - Node v26.5.1, npm 11.17.0, git 2.55.0
 - Blender 5.2 installed at `C:\Program Files\Blender Foundation\Blender 5.2`
   (M3 asset generation path; procedural, no addon dependency)
+
 
