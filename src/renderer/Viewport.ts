@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { SceneEnvironment } from "../scene/SceneEnvironment";
 import { DepthPreview } from "./DepthPreview";
+import { CameraRig, DEFAULT_CAMERA_POSE, type CameraPose } from "./CameraRig";
 
 // Owns the WebGL renderer, scene, camera and orbit controls.
 // Kept framework-free so later milestone systems attach without a Vue dependency.
@@ -16,6 +17,7 @@ export class Viewport {
   private readonly resizeObserver: ResizeObserver;
   private frameHandle = 0;
   private readonly depthPreview: DepthPreview;
+  readonly cameraRig: CameraRig;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -34,16 +36,18 @@ export class Viewport {
     this.scene.background = new THREE.Color(0x14161a);
 
     this.camera = new THREE.PerspectiveCamera(
-      50,
+      DEFAULT_CAMERA_POSE.fov,
       this.aspect(),
       0.05,
       500,
     );
-    this.camera.position.set(2.4, 2.0, 3.2);
-    this.camera.lookAt(0, 0.9, 0);
+    // Set through CameraRig's shared default so Reset cannot drift from the
+    // opening view.
+    this.camera.position.fromArray(DEFAULT_CAMERA_POSE.position);
+
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.target.set(0, 0.9, 0);
+    this.controls.target.fromArray(DEFAULT_CAMERA_POSE.target);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.update();
@@ -51,6 +55,11 @@ export class Viewport {
     this.environment = new SceneEnvironment(this.camera);
     this.environment.attach(this.scene);
     this.depthPreview = new DepthPreview(this.scene, this.camera);
+    this.cameraRig = new CameraRig(
+      this.camera,
+      this.controls,
+      this.renderer.domElement,
+    );
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
@@ -118,3 +127,4 @@ export class Viewport {
     this.renderer.domElement.remove();
   }
 }
+

@@ -14,6 +14,8 @@ import {
 } from "../models/ModelCatalog";
 import { modelThumbnail } from "../models/ModelThumbnail";
 import { usePreferences } from "../prefs/Preferences";
+import { removePreset, upsertPreset } from "../prefs/CameraPresets";
+import type { CameraPose } from "../prefs/CameraTypes";
 import { resolveShortcut, type ShortcutAction } from "../prefs/Shortcuts";
 import type { GridState, LightState } from "../scene/SceneEnvironment";
 import {
@@ -477,6 +479,73 @@ export function usePosing() {
   });
   const lightGizmoVisible = ref(true);
 
+  // ------------------------------------------------- Phase 4a: camera control
+
+  const cameraLocked = ref(false);
+  const cameraPresetName = ref("");
+  const cameraError = ref<string | null>(null);
+
+  function toggleCameraLock(): void {
+    const rig = viewport.value?.cameraRig;
+    if (!rig) return;
+    cameraLocked.value = rig.toggleLock();
+  }
+
+  function resetCamera(): void {
+    const rig = viewport.value?.cameraRig;
+    if (!rig) return;
+    rig.reset();
+    fov.value = viewport.value?.environment.getFov() ?? fov.value;
+  }
+
+  /**
+   * Park the current framing under a name.
+   *
+   * Upserting by name rather than appending is what makes pressing Save twice
+   * safe: the second press updates the first instead of leaving a duplicate the
+   * artist then has to delete.
+   */
+  function saveCameraPreset(name?: string): boolean {
+    const rig = viewport.value?.cameraRig;
+    const prefsApi = usePreferences();
+    const finalName = (name ?? cameraPresetName.value).trim();
+    if (!rig || !finalName) {
+      cameraError.value = "Give the camera preset a name first.";
+      return false;
+    }
+    prefsApi.set(
+      "cameraPresets",
+      upsertPreset(prefsApi.prefs.value.cameraPresets, rig.current(finalName)),
+    );
+    cameraPresetName.value = "";
+    cameraError.value = null;
+    return true;
+  }
+
+  function applyCameraPreset(pose: CameraPose): void {
+    const rig = viewport.value?.cameraRig;
+    if (!rig) return;
+    rig.apply(pose);
+    fov.value = viewport.value?.environment.getFov() ?? pose.fov;
+  }
+
+  function deleteCameraPreset(name: string): void {
+    const prefsApi = usePreferences();
+    prefsApi.set(
+      "cameraPresets",
+      removePreset(prefsApi.prefs.value.cameraPresets, name),
+    );
+  }
+
+  /**
+   * Capture the viewport as it looks right now.
+   *
+   * Distinct from an export pass on purpose: this includes the grid, light
+   * gizmo and prop helpers, which export deliberately hides.
+   */
+  function takeScreenshot(): string | null {
+    return viewport.value?.cameraRig.screenshot() ?? null;
+  }
   function setFov(degrees: number): void {
     viewport.value?.environment.setFov(degrees);
     fov.value = viewport.value?.environment.getFov() ?? degrees;
@@ -1584,6 +1653,15 @@ export function usePosing() {
     grid,
     lightGizmoVisible,
     setFov,
+    cameraLocked,
+    cameraPresetName,
+    cameraError,
+    toggleCameraLock,
+    resetCamera,
+    saveCameraPreset,
+    applyCameraPreset,
+    deleteCameraPreset,
+    takeScreenshot,
     setLight,
     setGrid,
     setLightGizmo,
@@ -1710,4 +1788,6 @@ export function usePosing() {
     replayTour,
   };
 }
+
+
 

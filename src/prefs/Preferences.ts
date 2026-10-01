@@ -3,6 +3,8 @@
 // Plain localStorage, no server, no account.
 
 import { ref, watch } from "vue";
+import { validateCameraPoses } from "./CameraPresets";
+import type { CameraPose } from "./CameraTypes";
 
 const KEY = "poseify.prefs.v1";
 
@@ -13,6 +15,12 @@ export interface Prefs {
   snapPropsByDefault: boolean;
   autoKeyframes: boolean;
   onboardingDone: boolean;
+  /**
+   * Named camera framings, so an artist can park a view and come back to it
+   * while posing something else. Validated on read because localStorage is
+   * user-editable and outlives any single app version.
+   */
+  cameraPresets: CameraPose[];
 }
 
 const DEFAULTS: Prefs = {
@@ -22,6 +30,7 @@ const DEFAULTS: Prefs = {
   snapPropsByDefault: true,
   autoKeyframes: false,
   onboardingDone: false,
+  cameraPresets: [],
 };
 
 function read(): Prefs {
@@ -36,6 +45,7 @@ function read(): Prefs {
       favorites: Array.isArray(parsed.favorites)
         ? parsed.favorites.filter((id): id is string => typeof id === "string")
         : [],
+      cameraPresets: validateCameraPoses(parsed.cameraPresets),
     };
   } catch {
     return { ...DEFAULTS };
@@ -81,3 +91,5 @@ export function usePreferences() {
 
   return { prefs, isFavorite, toggleFavorite, set, completeOnboarding, restartOnboarding };
 }
+
+

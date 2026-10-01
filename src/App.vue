@@ -53,6 +53,15 @@ const {
   grid,
   lightGizmoVisible,
   setFov,
+  cameraLocked,
+  cameraPresetName,
+  cameraError,
+  toggleCameraLock,
+  resetCamera,
+  saveCameraPreset,
+  applyCameraPreset,
+  deleteCameraPreset,
+  takeScreenshot,
   setLight,
   setGrid,
   setLightGizmo,
@@ -164,6 +173,11 @@ async function addModel(config: CatalogEntry): Promise<void> {
   }
 }
 
+/** Capture the viewport and hand it to the download helper. */
+function captureViewport(): void {
+  const shot = takeScreenshot();
+  if (shot) download("poseify-viewport.png", shot);
+}
 const groups = computed(() => {
   const map = new Map<string, CatalogEntry[]>();
   for (const m of catalog) {
@@ -452,6 +466,70 @@ watch(
         <button type="button" class="chip wide" @click="frameScene">
           Frame scene
         </button>
+        <div class="row wrap">
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: cameraLocked }"
+            title="Freeze the camera so orbiting cannot move the view"
+            @click="toggleCameraLock()"
+          >
+            {{ cameraLocked ? "Unlock" : "Lock" }}
+          </button>
+          <button
+            type="button"
+            class="chip"
+            title="Return to the opening camera position"
+            @click="resetCamera()"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            class="chip"
+            title="Capture the viewport exactly as it looks now"
+            @click="captureViewport()"
+          >
+            Screenshot
+          </button>
+        </div>
+
+        <h3 class="sub">Camera presets</h3>
+        <div class="row preset-row">
+          <input
+            v-model="cameraPresetName"
+            type="text"
+            placeholder="Preset name"
+            aria-label="Camera preset name"
+          />
+          <button
+            type="button"
+            class="chip"
+            :disabled="!cameraPresetName.trim()"
+            @click="saveCameraPreset()"
+          >
+            Save
+          </button>
+        </div>
+        <ul v-if="prefs.cameraPresets.length" class="list">
+          <li v-for="preset in prefs.cameraPresets" :key="preset.name">
+            <button type="button" @click="applyCameraPreset(preset)">
+              {{ preset.name }}
+            </button>
+            <button
+              type="button"
+              class="danger"
+              :aria-label="`Delete preset ${preset.name}`"
+              @click="deleteCameraPreset(preset.name)"
+            >
+              &times;
+            </button>
+          </li>
+        </ul>
+        <p v-else class="hint">
+          Park a framing here to come back to it while posing something else.
+        </p>
+        <p v-if="cameraError" class="hint warn">{{ cameraError }}</p>
       </section>
 
       <section>
@@ -1314,6 +1392,18 @@ button.chip.wide {
   flex-wrap: wrap;
 }
 
+/* Camera preset name field sits beside its Save button. */
+.preset-row input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--poseify-border);
+  border-radius: 6px;
+  background: #1b1f27;
+  color: var(--poseify-text);
+  font-size: 11px;
+}
+
 .gizmo-modes button.chip {
   flex: 1 1 0;
   text-align: center;
@@ -1950,3 +2040,5 @@ button.chip:disabled {
   background: #6fb4ff;
 }
 </style>
+
+
