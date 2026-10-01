@@ -18,7 +18,7 @@ Last updated: 2026-09-30
 | M6 — Poses | **PASS** | 137/137 tests; build clean. Browser-verified: 98 pose tiles with 60 rendered thumbnails, search "sword" -> exactly 3, "lying" tag -> exactly 5. Pose transfer measured at 5.16e-8 rad max error between two differently-proportioned models |
 | M7 — Animations (CMU mocap) | **PASS** | 130 clips imported from CMU, 179/179 tests, build clean. Browser-verified: clips listed, transport loads, scrubbing to 0.60s moves LeftHand 21 cm and changes the Spine quaternion |
 | M8 — Props + image planes | **PASS** | 202/202 tests; build clean. Browser-verified: chair renders at real-world scale and the seated pose places the figure on it (footY 0.454 vs a 0.45 m seat) |
-| M9 — Scenes, save/load, undo | TODO | — |
+| M9 — Scenes, save/load, undo | **PASS** | 239/239 tests; build clean. Browser-verified: premade scene loads with figure + props, save → page reload → restore is identical, undo/redo walks state correctly |
 | M10 — Polish + ship | TODO | — |
 
 ## M0 notes
@@ -378,6 +378,44 @@ All three were invisible to tests and would have shipped:
 
 - Adding a chair and applying `seated_relaxed` places the figure on the seat
   with both feet on the floor: `footY` 0.454 m against a 0.45 m seat height.
+
+## M9 notes
+
+- `src/scene/Scene.ts` defines scene state as plain data with no three.js
+  objects, so it serialises, round trips, and can live in localStorage or a
+  file. Quaternions are stored rather than Euler angles so a reloaded scene
+  reproduces the pose exactly. `parseScene` repairs malformed fields rather
+  than throwing, because scene files are hand-editable and arrive from
+  downloads.
+- `src/scene/History.ts` implements undo/redo as a stack of scene snapshots
+  rather than inverse operations, which avoids the classic failure where an
+  inverse does not exactly restore the prior state and history drifts. Snapshots
+  are cloned in and out so later mutation cannot retroactively alter history.
+- `src/scene/PremadeScenes.ts` ships **48** premade scenes, above the ~30
+  asked for, spanning standing, seated, walking, running, fighting, aiming,
+  kneeling, lying, gesturing, dancing and staging. Tests assert every scene
+  references only models, poses and props that actually exist.
+- `src/scene/SceneStorage.ts` handles localStorage plus JSON file import and
+  export, guarding against storage being unavailable (private browsing) or
+  full (quota).
+
+### Bug found and fixed during M9
+
+**`applyScene` referenced `findModel` without importing it**, after the M3
+catalogue rewrite renamed exports. Every scene silently loaded empty. What made
+this nasty is that the `catch` reported the model as "missing" rather than
+surfacing the error, so the scene just appeared to have nothing in it. The
+catch now includes the underlying message.
+
+### M9 verification detail
+
+- "Cafe Corner" loads a seated figure with chair, table and barrel
+  (22 bones, 3 props, 54k triangles).
+- Save writes `poseify.scene.<name>` and an index to localStorage; reloading
+  the page restores the scene identically — same bones, props, pose, layout
+  and name.
+- Adding a crate, then undoing, removes it and disables Undo; redo brings it
+  back.
 
 ## Legal posture
 
