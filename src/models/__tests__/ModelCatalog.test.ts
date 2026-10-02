@@ -8,7 +8,6 @@ import {
   normaliseToMetres,
 } from "../ModelCatalog";
 import { VENDOR_BASE } from "../VendorCatalog";
-import { PROCEDURAL_CATALOG } from "../ProceduralModels";
 import { DEFAULT_LOAD_CONFIG } from "../ModelLoadConfig";
 
 function dupe(values: readonly (string | undefined)[]): string[] {
@@ -22,19 +21,10 @@ function dupe(values: readonly (string | undefined)[]): string[] {
   return dupes;
 }
 
-describe("model catalogue — procedural and vendor", () => {
-  it("gives every model a usable source: a path or a procedural build", () => {
-    // Phase 4b added procedurally generated figures, so "every model has a
-    // path" is no longer the invariant. The invariant is that every model is
-    // loadable: a vendor file under VENDOR_BASE, or one of the generated
-    // figures which are built from the rig contract at runtime.
+describe("model catalogue", () => {
+  it("gives every model a vendor file to load", () => {
     expect(MODEL_CATALOG.length).toBeGreaterThan(0);
-    const proceduralIds = new Set(PROCEDURAL_CATALOG.map((p) => p.id));
     for (const config of MODEL_CATALOG) {
-      if (proceduralIds.has(config.id)) {
-        expect(config.path).toBeUndefined();
-        continue;
-      }
       expect(isVendorModel(config)).toBe(true);
       expect(config.path).toBeTruthy();
       expect(config.path!.startsWith(`${VENDOR_BASE}/`)).toBe(true);
@@ -46,8 +36,6 @@ describe("model catalogue — procedural and vendor", () => {
   });
 
   it("has no duplicate paths among the vendor models", () => {
-    // Procedural figures have no path at all, so comparing undefined values
-    // would report every generated figure as a duplicate of every other.
     const paths = MODEL_CATALOG.filter((m) => m.path).map((m) => m.path);
     expect(dupe(paths)).toEqual([]);
   });
@@ -98,9 +86,9 @@ describe("model catalogue — procedural and vendor", () => {
 
 describe("loadModel", () => {
   it("rejects a config with no vendor path instead of building an empty model", async () => {
-   const bogus = { ...DEFAULT_LOAD_CONFIG, id: "bogus", name: "Bogus" };
- await expect(loadModel(bogus)).rejects.toThrow(/no path/i);
- });
+    const bogus = { ...DEFAULT_LOAD_CONFIG, id: "bogus", name: "Bogus" };
+    await expect(loadModel(bogus)).rejects.toThrow(/no vendor file/i);
+  });
 });
 
 describe("normaliseToMetres", () => {

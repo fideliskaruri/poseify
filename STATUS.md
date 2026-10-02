@@ -30,7 +30,7 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | P2 — pose surgery | **PASS** | Surgery panel renders; limb isolation and inverse asserted on quaternions |
 | P3 — export completeness | **PASS** | all four items built; with/without hands and Preview Depth browser-verified; scene OBJ test-verified (download bytes unreadable in this browser) |
 | P4a — camera | **PASS** | lock/reset/presets/screenshot built; preset persistence and lock verified in-browser |
-| P4b — licence-clean model path | **PASS** | 6 procedural MIT-clean figures, leading the picker; browser-verified |
+| P4b — licence-clean model path | **REVERTED** | six procedural figures were added, then removed on request; the picker is the 33 scraped vendor FBX only |
 | P5 — hand posing | **PASS** | 9 poses x 2 sides, independent payload, 1e-12 body-independence asserted |
 | P6 — joint groups + anchors | **PASS** | cycle rejection verified in-browser; groups and anchors survive reload |
 | P7 — content generation | **PASS** | 98 -> 1,298 poses, 48 -> 268 scenes, all validated |
@@ -105,50 +105,44 @@ browser timed out (`Page.getFrameTree`, `Runtime.evaluate`,
 run completed the same flows, so this is host contention rather than an app
 fault. It should be re-run once the machine is quiet.
 
-### Phase 4b detail
+### Phase 4b — added, then removed
 
-The licence-clean model path. Six figures generated from the rig contract at
-runtime, exactly like the prop set, so they are MIT-clean by construction:
-there is no third-party asset to license, because there is no third-party
-asset.
+Phase 4b originally shipped six figures generated from the rig contract at
+runtime, as a licence-clean fallback that needed no download. They were
+**removed again** on request: the model picker led with code-built figures
+instead of the 33 scraped vendor FBX, which is the opposite of what the tool is
+for. The vendor payload is already present on disk and gitignored, so the
+fallback was never needed.
 
 | Check | Result |
 |---|---|
-| `npm test` | **508 passed / 508** (was 490) |
-| Test: every figure binds all 62 contract bones | **PASS** |
-| Test: every vertex sums to one bone weight | **PASS** |
-| Test: figures vary in height and build, not just scale | **PASS** |
-| Test: figures stand on the floor, not through it | **PASS** |
-| Test: a figure poses and the rotation actually takes | **PASS** |
-| Test: catalogue leads with procedural, no file needed | **PASS** |
-| Browser: 39 tiles, six procedural leading | **PASS** |
-| Browser: all six show rendered thumbnails | **PASS** |
-| Browser: Figure Stout loads, poses and deforms | **PASS** |
+| `src/models/ProceduralModels.ts` deleted | **DONE** |
+| `MODEL_CATALOG` is vendor-only, 33 entries | **PASS** |
+| `loadModel` rejects a config with no vendor file | **PASS** |
+| 220 generated scenes regenerated off the 33 vendor models | **PASS** |
+| `npm test` | **492 passed / 492** (31 files) |
+| `npm run typecheck` | clean |
 
-Three bugs found here, all of the same shape — a check that passed while the
-feature was visibly broken:
+Three bugs were found while the figures existed, and are recorded here because
+the fixes to shared code are still in the tree:
 
 1. **The catalogue edit landed only its import.** `MODEL_CATALOG` was still
    vendor-only and `loadModel` still threw for anything without a path, so six
-   figures the picker could not offer were a feature that did not exist. A new
-   `CatalogueMix` test caught it by asserting the first catalogue entry is
-   procedural.
+   figures the picker could not offer were a feature that did not exist.
 2. **`skinIndex` was a 4-component attribute with one index pushed per
-   vertex.** The renderer read past the end of the array and got a garbage
-   bone index, which surfaces deep inside `applyBoneTransform` as a null
-   `matrixWorld` - and as an empty tile rather than an error the picker could
-   show. `skinWeight` had the same shape problem.
+   vertex.** The renderer read past the end of the array and got a garbage bone
+   index, surfacing deep inside `applyBoneTransform` as a null `matrixWorld`.
 3. **The figure posed correctly throughout**, because posing writes bone
-   quaternions directly and never runs the skinning path. Every test passed
+   quaternions directly and never runs the skinning path — every test passed
    while every thumbnail was empty.
 
-The regression test now drives `getVertexPosition` over every vertex - the same
-path a raycast or an edit takes, and it needs no GL context - so a malformed
-skinning attribute is caught by `npm test` rather than by noticing empty tiles.
+Shared code that outlived the figures and is **kept**: `resolveContractBoneName`
+in `Retargeter`, the `AttachedBindMode` / bind-matrix handling in
+`PosableSkeleton`, and the parent-first bone ordering in the retargeter. Those
+are rig-correctness fixes that vendor FBX benefit from too.
 
-Two existing catalogue tests encoded the old vendor-only world and were updated
-rather than deleted: the vendor half still asserts every vendor path is under
-`VENDOR_BASE`, and the duplicate-path check now ignores models that have no path.
+The procedural **prop** set (chair, table, barrel, sword, ball, crate, cylinder,
+cone, plus more) is a different subsystem in `src/props/` and is untouched.
 
 ### Phase 7 detail
 
@@ -589,9 +583,9 @@ ordering in that document remain accurate and load-bearing.
 
 - Models are now the **real PoseMy.Art FBX files**, fetched from
   `posemyart3.nyc3.cdn.digitaloceanspaces.com/models/` by
-  `tools/fetch-models.ts` (31 MB, 16 files). The procedural mannequins remain
-  in the catalogue as clearly-labelled offline fallbacks, prefixed
-  `proc_*` so they never collide with the real ones.
+  `tools/fetch-models.ts` (31 MB, 16 files). The procedural mannequins that
+  briefly sat in the catalogue as offline fallbacks have since been removed;
+  the picker is vendor-only.
 - `tools/probe-models.ts` HEADs every candidate filename first.
   16 of 43 free files exist; the `_OP_Y_IK` variants all return HTTP 403.
 - `tools/verify-models.ts` parses each FBX in Node and asserts the retargeter
@@ -603,7 +597,7 @@ ordering in that document remain accurate and load-bearing.
 The vendor FBX files are **PoseMy.Art's property. Not MIT, not CC0.** They are
 gitignored and documented in `ATTRIBUTION.md`. Anyone forking or publishing this
 repo must delete `public/vendor/pose-my-art/` or substitute clean assets.
-Poseify's own procedural models are original and MIT.
+The procedural **props** in `src/props/` are original and MIT.
 
 ### The retargeter earned its keep
 

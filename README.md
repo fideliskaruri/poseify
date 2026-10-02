@@ -31,7 +31,7 @@ Poseify does, for nothing, with no account and no network connection.
 | **Poses** | 6,300+ claimed (2,446 reachable free) | 1,298 |
 | **Premade scenes** | 5,500+ claimed | 268 |
 | **Animation clips** | 2,400+ claimed | 130 |
-| **Models** | 54 | 39 (6 generated in code, 33 fetched) |
+| **Models** | 54 | 33 (fetched) |
 | **Export passes** | Regular, OpenPose with/without hands, Depth, Canny, Normals | The same six, plus whole-scene OBJ |
 | **Live depth preview** | Yes | Yes |
 | **Move / rotate / scale objects** | Yes | Yes |
@@ -54,7 +54,7 @@ Stated plainly, because a comparison that only lists wins is marketing:
 
 - **Content volume.** 1,298 poses against 6,300+, 268 scenes against 5,500+.
   This is the real gap and it is the reason the generator exists.
-39 against 54, and only six of those ship in the repository. PoseMy.Art's
+33 against 54, and none of those ship in the repository. PoseMy.Art's
   frames and animal set are all genuinely useful and not yet here.
 - **Props.** 9 against 26 pages of art props. Every Poseify prop is
   procedural, which keeps the licence clean but limits character.
@@ -66,9 +66,8 @@ Stated plainly, because a comparison that only lists wins is marketing:
 
 ## Features
 
-- **39 reference models** — six MIT-clean figures generated from the rig
-  contract in code (no download, no licence to honour), plus 33 realistic,
-  anime, stylized, chibi, bot, skeleton, creature and animal FBX models.
+- **33 reference models** — realistic, anime, stylized, chibi, bot, skeleton,
+  creature and animal FBX models,
   creature and animal, all rigged to a shared skeleton contract.
 - **Two posing modes** — forward kinematics via a rotation gizmo on any joint,
   and inverse kinematics for dragging hands and feet.

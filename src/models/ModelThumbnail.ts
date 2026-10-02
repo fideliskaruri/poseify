@@ -10,10 +10,6 @@
 
 import * as THREE from "three";
 import { loadModelFromURL } from "./ModelLoader";
-import {
-  PROCEDURAL_CATALOG,
-  buildProceduralModel,
-} from "./ProceduralModels";
 import type { CatalogEntry } from "./ModelCatalog";
 
 const THUMB_SIZE = 128;
@@ -68,9 +64,8 @@ function ensureRenderer(): THREE.WebGLRenderer | null {
  * Bounds of a model, measured from its geometry.
  *
  * Box3.setFromObject walks the whole hierarchy, which throws on a SkinnedMesh
- * whose skeleton bones are not all its own descendants - exactly the shape of a
- * procedurally built figure. Measuring the geometry directly works for both
- * kinds of model and cannot trip over a parentless bone.
+ * whose skeleton bones are not all its own descendants. Measuring the geometry
+ * directly works for any model and cannot trip over a parentless bone.
  */
 function measureBounds(root: THREE.Object3D): THREE.Box3 {
   const box = new THREE.Box3();
@@ -145,32 +140,22 @@ async function buildThumbnail(
   if (!gl || !scene || !camera) return null;
 
   let root: THREE.Object3D;
-  if (config.path) {
-    try {
-      // Reuse the app's own loader so thumbnails and posed models agree on how
-      // a given FBX is interpreted.
-      const loaded = await loadModelFromURL(config.path, {
-        renderer: renderContext?.renderer,
-      });
-      root = loaded.root;
-    } catch {
-      // Missing or corrupt file: leave this tile text-only rather than
-      // rejecting the whole picker.
-      return null;
-    }
-  } else {
-    // Procedural figures have no file: they are built from the rig contract.
-    // Returning null here would leave the licence-clean models as text-only
-    // tiles in the picker, which is the opposite of what they are for.
-    const procedural = PROCEDURAL_CATALOG.find((p) => p.id === config.id);
-    if (!procedural) return null;
-    root = buildProceduralModel(procedural);
+  if (!config.path) return null;
+  try {
+    // Reuse the app's own loader so thumbnails and posed models agree on how
+    // a given FBX is interpreted.
+    const loaded = await loadModelFromURL(config.path, {
+      renderer: renderContext?.renderer,
+    });
+    root = loaded.root;
+  } catch {
+    // Missing or corrupt file: leave this tile text-only rather than
+    // rejecting the whole picker.
+    return null;
   }
 
   try {
-    // Procedural figures are already authored in metres, so normalising them
-    // the way a vendor FBX is normalised would shrink them out of frame.
-    if (config.path) normaliseForThumbnail(root);
+    normaliseForThumbnail(root);
     scene.add(root);
     frame(root, camera);
     gl.render(scene, camera);
