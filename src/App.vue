@@ -223,6 +223,10 @@ async function addModel(config: CatalogEntry): Promise<void> {
     const posed = await attachModel(config);
     setActive(posed.config.id);
     frameScene();
+    // Every section in the right panel is scoped to an active model, so reveal
+    // it now rather than leaving the artist with an empty canvas and a hidden
+    // library to hunt for.
+    showRightPanel.value = true;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   }
@@ -372,6 +376,18 @@ const premadeScenes = allPremadeScenes;
 const libraryTab = ref<"poses" | "props" | "scenes">("poses");
 const librarySearch = ref("");
 
+// The overlay shell hides the two original side panels, but several sections
+// were never ported into an overlay pane: the reference library (5,170 poses,
+// 1,331 props, 5,543 scenes), hand poses, joint groups and anchors. They stay
+// in the markup, so the panel is toggled back into view rather than duplicating
+// all of it. Opening a model reveals the panel, because every one of those
+// sections is scoped to `activeModelId` and would otherwise show empty.
+const showRightPanel = ref(false);
+
+function toggleRightPanel(): void {
+  showRightPanel.value = !showRightPanel.value;
+}
+
 const filteredVendorPoses = computed(() => {
   const needle = librarySearch.value.trim().toLowerCase();
   if (!needle) return visibleVendorPoses.value;
@@ -505,6 +521,16 @@ watch(
       >
         <span aria-hidden="true">&#9881;</span>
       </button>
+      <button
+        type="button"
+        class="icon-btn"
+        :class="{ on: showRightPanel }"
+        aria-label="Library and tools panel"
+        title="Reference library, hand poses, joint groups and anchors"
+        @click="toggleRightPanel()"
+      >
+        <span aria-hidden="true">&#9776;</span>
+      </button>
     </nav>
 
     <!--
@@ -512,7 +538,13 @@ watch(
       PoseMy.Art's order so muscle memory transfers: transform first, then
       pose editing, then object-level commands.
     -->
-    <div v-if="activeModelId" class="context-bar" role="toolbar" aria-label="Object and pose tools">
+    <div
+      v-if="activeModelId"
+      class="context-bar"
+      :class="{ 'with-panel': showRightPanel }"
+      role="toolbar"
+      aria-label="Object and pose tools"
+    >
       <div class="segmented" role="group" aria-label="Transform mode">
         <button
           type="button"
@@ -1076,7 +1108,7 @@ watch(
       </section>
     </aside>
 
-    <aside class="panel panel-right">
+    <aside v-show="showRightPanel" class="panel panel-right">
       <section>
         <h2>Export</h2>
         <label class="field">
@@ -2369,6 +2401,11 @@ watch(
 
 .panel-right {
   right: 12px;
+  /* The reference library is the reason this panel still exists: it lists
+   * thousands of poses with thumbnails, which needs more room than the old
+   * 216px sidebar gave it. */
+  width: 360px;
+  max-width: calc(100vw - 24px);
 }
 
 .panel h2 {
@@ -2660,6 +2697,13 @@ button.chip.tile.loading {
   grid-template-columns: none;
 }
 
+/* With the library panel open the toolbar centres in the space that is left,
+ * so it stops sliding under the panel's edge on a narrow window. */
+.context-bar.with-panel {
+  left: calc(50% - 186px);
+  max-width: calc(100vw - 408px);
+}
+
 .context-bar .segmented button {
   padding: 6px 12px;
   white-space: nowrap;
@@ -2759,14 +2803,14 @@ button.chip.tile.loading {
   gap: 14px;
 }
 
-/* The original two-column panels are superseded by the rails and overlays.
- * They stay in the template for now so each section can be ported into its
- * overlay pane without losing markup, but they must not render: two panels
- * plus the new chrome is the layout problem this change is fixing.
- * Remove the aside elements once every section has been ported.
+/* The left panel is fully superseded by the rails and overlays, so it never
+ * renders: two panels plus the new chrome was the layout problem the overlay
+ * shell fixed. The right panel is different - the reference library, hand
+ * poses, joint groups and anchors were never ported into an overlay pane, so
+ * it stays and is toggled from the rail instead. Remove the aside elements
+ * once those sections have been ported too.
  */
-.panel-left,
-.panel-right {
+.panel-left {
   display: none;
 }
 

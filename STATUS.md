@@ -35,6 +35,7 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | P6 — joint groups + anchors | **PASS** | cycle rejection verified in-browser; groups and anchors survive reload |
 | P7 — content generation | **PASS** | 98 -> 1,298 poses, 48 -> 268 scenes, all validated |
 | P8 — ship | **PASS** | README comparison, demo page, STATUS.md updated |
+| UI — overlay shell (`codex/posemy-ui`) | **PASS** | rebased onto main, merged, and the stranded right-panel sections restored to reachability |
 
 ### Phase 1 detail
 
@@ -143,6 +144,54 @@ are rig-correctness fixes that vendor FBX benefit from too.
 
 The procedural **prop** set (chair, table, barrel, sword, ball, crate, cylinder,
 cone, plus more) is a different subsystem in `src/props/` and is untouched.
+
+### UI shell merge — the reference library was unreachable
+
+`codex/posemy-ui` (2 commits, +976 lines of `App.vue`) was rebased onto main
+and fast-forwarded. The rebase was clean, but merging it **silently stranded
+the vendor library**, and only a browser check caught it.
+
+The UI branch replaced the two-column layout with an icon rail plus overlay
+panes for models, poses, props, scenes and export. It did that by adding
+
+```css
+.panel-left,
+.panel-right { display: none; }
+```
+
+with a comment saying the markup would stay "until every section has been
+ported". They never were. Twelve sections in the right panel were left in the
+DOM and hidden, including:
+
+- **Reference library** — 5,170 poses / 1,331 props / 5,543 scenes
+- Hand poses, joint groups, anchors
+
+So the headline content — the whole reason the stash was merged — was in the
+markup, counted correctly in the DOM, and impossible to reach. `vue-tsc` was
+clean, all 492 tests passed, and the build succeeded: the tests never render
+the panel, and a hidden element is not a template error.
+
+Measured, not eyeballed: in the browser the panel computed
+`display: none`, `width: 0`, while `.vendor-lib` still reported **5,170**
+`.pose-tile` buttons.
+
+| Check | Result |
+|---|---|
+| `panel-right` before | `display: none`, 0x0, 5,170 pose buttons unreachable |
+| Rail toggle added, panel bound with `v-show` | **PASS** |
+| Panel after | 360px wide, library visible |
+| Browser: apply vendor pose "A woman stabing using a katana" | **PASS** |
+| Browser: figure posed, skinning intact, no scatter | **PASS** |
+| Context toolbar clear of the panel | **PASS** (after shifting its centring) |
+| `npm test` | **492 passed / 31 files** |
+| `npm run typecheck` / `npm run build` | clean / green |
+
+The panel now opens automatically when a model is attached, since every
+section inside it is scoped to `activeModelId`. The left panel stays hidden:
+it was genuinely superseded.
+
+**The posing bug is also confirmed fixed**, on a real vendor model with a real
+vendor pose — the figure poses cleanly with no exploded geometry.
 
 ### Phase 7 detail
 
