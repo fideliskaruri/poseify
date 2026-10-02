@@ -27,6 +27,14 @@ const {
   duplicateSelectedObject,
   toggleObjectHidden,
   toggleObjectLocked,
+  attachModeActive,
+  attachableSelectedProp,
+  attachError,
+  attachStatus,
+  toggleAttachToJoint,
+  stopAttachMode,
+  jointHandlesVisible,
+  setJointHandlesVisible,
   setSelectedObjectColor,
   selectableObjects,
   deleteSelectedObject,
@@ -92,6 +100,7 @@ const {
   loadThumbnails,
   loadingId,
   frameScene,
+  modelDebug,
   fov,
   light,
   grid,
@@ -282,7 +291,15 @@ const propGroups = computed(() => {
 // the canvas. One overlay at a time matches that, and stops the previous
 // layout's real failure mode, where twelve stacked sections in a 216px column
 // meant Props and Animation were off-screen behind a scroll.
-type OverlayName = "models" | "props" | "poses" | "scenes" | "export" | "objects";
+type OverlayName =
+  | "models"
+  | "props"
+  | "poses"
+  | "scenes"
+  | "export"
+  | "objects"
+  | "groups"
+  | "anchors";
 
 const activeOverlay = ref<OverlayName | null>(null);
 
@@ -293,6 +310,8 @@ const OVERLAY_TITLES: Record<OverlayName, string> = {
   scenes: "Premade Scenes",
   export: "Export",
   objects: "Scene Objects",
+  groups: "Joint Groups",
+  anchors: "Anchors",
 };
 
 const overlayTitle = computed(() =>
@@ -469,6 +488,32 @@ watch(
       >
         <span aria-hidden="true">&#8681;</span>
       </button>
+      <!--
+        Groups and anchors are first-class menus here, not a section buried in
+        the right panel. PoseMy.Art gives both their own top-level menu button,
+        and the v2 audit found the working implementations were unreachable
+        there: an artist would not find a feature they never see.
+      -->
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Joint Groups"
+        title="Group a chain of joints so it can be posed or reset as a unit"
+        :disabled="!activeModelId"
+        @click="openOverlay('groups')"
+      >
+        <span aria-hidden="true">&#9783;</span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Anchors"
+        title="Pin a joint to another joint or a prop"
+        :disabled="!activeModelId"
+        @click="openOverlay('anchors')"
+      >
+        <span aria-hidden="true">&#9873;</span>
+      </button>
     </nav>
 
     <nav class="rail rail-top-right" aria-label="Scene and settings">
@@ -520,6 +565,23 @@ watch(
         @click="openSettings()"
       >
         <span aria-hidden="true">&#9881;</span>
+      </button>
+      <!--
+        Joint handles. PoseMy.Art exposes the same pair of booleans bottom-left
+        (model/joint gizmo, light gizmo); this is the joint one, so an artist
+        can see the joints they are about to pose or attach to.
+      -->
+      <button
+        type="button"
+        class="icon-btn"
+        :class="{ on: jointHandlesVisible || attachModeActive }"
+        :aria-pressed="jointHandlesVisible || attachModeActive"
+        aria-label="Joint handles"
+        title="Show a handle on every joint (also shown while attaching)"
+        :disabled="!activeModelId"
+        @click="setJointHandlesVisible(!jointHandlesVisible)"
+      >
+        <span aria-hidden="true">&#9673;</span>
       </button>
       <button
         type="button"
@@ -636,6 +698,29 @@ watch(
       >
         Lock
       </button>
+
+      <!--
+        Attach to Joint, mirroring PoseMy.Art. Only meaningful for a prop, and
+        only with a figure loaded to attach it to, so it stays hidden otherwise
+        rather than sitting there greyed out explaining nothing.
+      -->
+      <button
+        v-if="attachableSelectedProp"
+        type="button"
+        class="tool-btn"
+        :class="{ on: attachModeActive }"
+        :title="
+          attachModeActive
+            ? 'Click a highlighted joint, or press Escape to cancel'
+            : attachableSelectedProp.attach
+              ? 'Detach from the joint'
+              : 'Attach to a joint'
+        "
+        @click="toggleAttachToJoint(attachableSelectedProp.id)"
+      >
+        {{ attachModeActive ? "Pick a joint" : attachableSelectedProp.attach ? "Detach" : "Attach" }}
+      </button>
+
       <label class="tool-swatch" title="Object colour">
         <span class="visually-hidden">Object colour</span>
         <input
@@ -655,6 +740,32 @@ watch(
     </div>
 
     <p v-if="status" class="status-pill" aria-live="polite">{{ status }}</p>
+
+    <!-- TEMPORARY diagnostic for the invisible-model bug. Remove with
+         modelDebug() in usePosing.ts once the cause is fixed. -->
+    <p
+      v-if="activeModelId"
+      class="status-pill attach-hint"
+      aria-live="off"
+      data-debug="model"
+    >
+      {{ modelDebug() }}
+    </p>
+
+    <!--
+      Attach mode feedback. An artist who presses Attach and sees nothing
+      change has no way to know the app is now waiting for a click, so the
+      prompt is stated rather than implied.
+    -->
+    <p v-if="attachModeActive" class="status-pill attach-hint" aria-live="polite">
+      Click a highlighted joint to attach it, or press Escape to cancel
+    </p>
+    <p v-else-if="attachError" class="status-pill attach-hint warn" aria-live="polite">
+      {{ attachError }}
+    </p>
+    <p v-else-if="attachStatus" class="status-pill attach-hint" aria-live="polite">
+      {{ attachStatus }}
+    </p>
 
     <!--
       Overlay surfaces. Exactly one is open at a time; the rail buttons swap
@@ -1031,6 +1142,150 @@ watch(
             {{ RENDER_PASSES.length }} passes: regular, OpenPose, depth, canny,
             normals.
           </p>
+        </div>
+
+        <!--
+          Joint groups. Reached from its own rail button rather than a section
+          in the right panel: the implementation was already correct, it was
+          just never surfaced where an artist would look for it.
+        -->
+        <div v-else-if="activeOverlay === 'groups'" class="overlay-pane">
+          <p class="hint">
+            Group a chain so it can be posed or reset as a unit.
+          </p>
+          <div class="row preset-row">
+            <input
+              v-model="groupDraftName"
+              type="text"
+              placeholder="Group name"
+              aria-label="Group name"
+            />
+            <button
+              type="button"
+              class="chip"
+              :disabled="!groupDraftName.trim() || groupDraftBones.length === 0"
+              @click="createGroup()"
+            >
+              Add
+            </button>
+          </div>
+          <div class="tags bone-tags">
+            <button
+              v-for="bone in groupableBones"
+              :key="bone"
+              type="button"
+              class="tag"
+              :class="{ on: groupDraftBones.includes(bone) }"
+              @click="
+                groupDraftBones = groupDraftBones.includes(bone)
+                  ? groupDraftBones.filter((b) => b !== bone)
+                  : [...groupDraftBones, bone]
+              "
+            >
+              {{ bone }}
+            </button>
+          </div>
+          <ul v-if="jointGroups.length" class="list">
+            <li v-for="group in jointGroups" :key="group.id">
+              <button type="button" @click="resetGroup(group.id)">
+                {{ group.name }}
+                <small>({{ group.bones.length }})</small>
+              </button>
+              <button
+                type="button"
+                class="danger"
+                :aria-label="`Delete group ${group.name}`"
+                @click="deleteGroup(group.id)"
+              >
+                &times;
+              </button>
+            </li>
+          </ul>
+          <p v-else class="hint">No groups yet.</p>
+          <p v-if="groupStatus" class="hint">{{ groupStatus }}</p>
+        </div>
+
+        <!-- Anchors. Same reasoning as groups above. -->
+        <div v-else-if="activeOverlay === 'anchors'" class="overlay-pane">
+          <p class="hint">
+            Pin a joint to another joint or a prop. Cycles are refused.
+          </p>
+          <label class="field">
+            <span>Joint</span>
+            <select v-model="anchorDraftBone">
+              <option :value="null">Pick a joint</option>
+              <option v-for="bone in groupableBones" :key="bone" :value="bone">
+                {{ bone }}
+              </option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Pin to</span>
+            <select v-model="anchorDraftTarget">
+              <option :value="null">Pick a target</option>
+              <optgroup label="Joints">
+                <option
+                  v-for="bone in groupableBones"
+                  :key="bone"
+                  :value="{ kind: 'bone', name: bone }"
+                >
+                  {{ bone }}
+                </option>
+              </optgroup>
+              <optgroup v-if="props.length" label="Props">
+                <option
+                  v-for="prop in props"
+                  :key="prop.id"
+                  :value="{ kind: 'prop', id: prop.id }"
+                >
+                  {{ prop.config.name }}
+                </option>
+              </optgroup>
+            </select>
+          </label>
+          <div class="row wrap">
+            <label class="field inline-field">
+              <span>Offset X</span>
+              <input v-model.number="anchorDraftOffset[0]" type="number" step="0.05" />
+            </label>
+            <label class="field inline-field">
+              <span>Offset Y</span>
+              <input v-model.number="anchorDraftOffset[1]" type="number" step="0.05" />
+            </label>
+            <label class="field inline-field">
+              <span>Offset Z</span>
+              <input v-model.number="anchorDraftOffset[2]" type="number" step="0.05" />
+            </label>
+          </div>
+          <button
+            type="button"
+            class="chip wide"
+            :disabled="!anchorDraftBone || !anchorDraftTarget"
+            @click="createAnchor()"
+          >
+            Add anchor
+          </button>
+          <p v-if="anchorError" class="hint warn">{{ anchorError }}</p>
+          <ul v-if="anchors.length" class="list">
+            <li v-for="anchor in anchors" :key="anchor.id">
+              <button type="button" disabled>
+                {{ anchor.bone }} &rarr;
+                {{ anchor.target.kind === "bone"
+                  ? anchor.target.name
+                  : (props.find((p) => p.id === anchor.target.id)?.config.name
+                    ?? anchor.target.id) }}
+              </button>
+              <button
+                type="button"
+                class="danger"
+                :aria-label="`Remove anchor on ${anchor.bone}`"
+                @click="deleteAnchor(anchor.id)"
+              >
+                &times;
+              </button>
+            </li>
+          </ul>
+          <p v-else class="hint">No anchors yet.</p>
         </div>
       </div>
     </section>
@@ -1642,146 +1897,6 @@ watch(
         <p class="hint">
           The gizmo moves the whole object. FK still rotates a single joint.
         </p>
-      </section>
-
-      <section v-if="activeModelId">
-        <h2>Joint groups</h2>
-        <p class="hint">
-          Group a chain so it can be posed or reset as a unit.
-        </p>
-        <div class="row preset-row">
-          <input
-            v-model="groupDraftName"
-            type="text"
-            placeholder="Group name"
-            aria-label="Group name"
-          />
-          <button
-            type="button"
-            class="chip"
-            :disabled="!groupDraftName.trim() || groupDraftBones.length === 0"
-            @click="createGroup()"
-          >
-            Add
-          </button>
-        </div>
-        <div class="tags bone-tags">
-          <button
-            v-for="bone in groupableBones"
-            :key="bone"
-            type="button"
-            class="tag"
-            :class="{ on: groupDraftBones.includes(bone) }"
-            @click="
-              groupDraftBones = groupDraftBones.includes(bone)
-                ? groupDraftBones.filter((b) => b !== bone)
-                : [...groupDraftBones, bone]
-            "
-          >
-            {{ bone }}
-          </button>
-        </div>
-        <ul v-if="jointGroups.length" class="list">
-          <li v-for="group in jointGroups" :key="group.id">
-            <button type="button" @click="resetGroup(group.id)">
-              {{ group.name }}
-              <small>({{ group.bones.length }})</small>
-            </button>
-            <button
-              type="button"
-              class="danger"
-              :aria-label="`Delete group ${group.name}`"
-              @click="deleteGroup(group.id)"
-            >
-              &times;
-            </button>
-          </li>
-        </ul>
-        <p v-else class="hint">No groups yet.</p>
-        <p v-if="groupStatus" class="hint">{{ groupStatus }}</p>
-      </section>
-
-      <section v-if="activeModelId">
-        <h2>Anchors</h2>
-        <p class="hint">
-          Pin a joint to another joint or a prop. Cycles are refused.
-        </p>
-        <label class="field">
-          <span>Joint</span>
-          <select v-model="anchorDraftBone">
-            <option :value="null">Pick a joint</option>
-            <option v-for="bone in groupableBones" :key="bone" :value="bone">
-              {{ bone }}
-            </option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Pin to</span>
-          <select v-model="anchorDraftTarget">
-            <option :value="null">Pick a target</option>
-            <optgroup label="Joints">
-              <option
-                v-for="bone in groupableBones"
-                :key="bone"
-                :value="{ kind: 'bone', name: bone }"
-              >
-                {{ bone }}
-              </option>
-            </optgroup>
-            <optgroup v-if="props.length" label="Props">
-              <option
-                v-for="prop in props"
-                :key="prop.id"
-                :value="{ kind: 'prop', id: prop.id }"
-              >
-                {{ prop.config.name }}
-              </option>
-            </optgroup>
-          </select>
-        </label>
-        <div class="row wrap">
-          <label class="field inline-field">
-            <span>Offset X</span>
-            <input v-model.number="anchorDraftOffset[0]" type="number" step="0.05" />
-          </label>
-          <label class="field inline-field">
-            <span>Offset Y</span>
-            <input v-model.number="anchorDraftOffset[1]" type="number" step="0.05" />
-          </label>
-          <label class="field inline-field">
-            <span>Offset Z</span>
-            <input v-model.number="anchorDraftOffset[2]" type="number" step="0.05" />
-          </label>
-        </div>
-        <button
-          type="button"
-          class="chip wide"
-          :disabled="!anchorDraftBone || !anchorDraftTarget"
-          @click="createAnchor()"
-        >
-          Add anchor
-        </button>
-        <p v-if="anchorError" class="hint warn">{{ anchorError }}</p>
-        <ul v-if="anchors.length" class="list">
-          <li v-for="anchor in anchors" :key="anchor.id">
-            <button type="button" disabled>
-              {{ anchor.bone }} &rarr;
-              {{ anchor.target.kind === "bone"
-                ? anchor.target.name
-                : (props.find((p) => p.id === anchor.target.id)?.config.name
-                  ?? anchor.target.id) }}
-            </button>
-            <button
-              type="button"
-              class="danger"
-              :aria-label="`Remove anchor on ${anchor.bone}`"
-              @click="deleteAnchor(anchor.id)"
-            >
-              &times;
-            </button>
-          </li>
-        </ul>
-        <p v-else class="hint">No anchors yet.</p>
       </section>
 
       <section v-if="activeModelId" class="vendor-lib">
@@ -2667,6 +2782,17 @@ button.chip.tile.loading {
   color: var(--poseify-text-dim);
   font-size: 12px;
   pointer-events: none;
+}
+
+/* Attach-mode feedback sits under the status pill so the two never overlap,
+ * and takes the warn colour only when there is something to report. */
+.attach-hint {
+  top: 44px;
+  color: var(--poseify-accent, #ffc53d);
+}
+
+.attach-hint.warn {
+  color: #ff8f6b;
 }
 
 /* Contextual toolbar for the selected object. Sits just under the rails so it

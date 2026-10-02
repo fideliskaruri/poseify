@@ -19,6 +19,7 @@ export type ShortcutAction =
   | "openSettings"
   | "togglePlayback"
   | "frameScene"
+  | "cancelAttach"
   | "help";
 
 interface Chord {
@@ -54,6 +55,9 @@ const CHARTS: readonly Chord[] = [
   { action: "openSettings", key: "," , ctrl: true },
   { action: "togglePlayback", key: " " },
   { action: "frameScene", key: "h" },
+  // Escape backs out of attach mode before it deselects anything, so a
+  // half-finished attach can be abandoned without losing the selection.
+  { action: "cancelAttach", key: "escape" },
   { action: "help", key: "?" },
 ];
 

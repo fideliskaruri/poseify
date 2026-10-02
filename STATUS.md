@@ -3,7 +3,7 @@
 Goal: free, open-source, browser-based 3D pose reference tool (PoseMy.Art equivalent).
 Stack fixed: Vue 3 + Vite + TypeScript + Three.js. Zero paid cost.
 
-Last updated: 2026-10-01
+Last updated: 2026-10-02
 
 ## v2 gap-closing run — phase state
 
@@ -36,6 +36,36 @@ to `3de63fe`, the last committed MIT-clean state. Nothing was deleted.
 | P7 — content generation | **PASS** | 98 -> 1,298 poses, 48 -> 268 scenes, all validated |
 | P8 — ship | **PASS** | README comparison, demo page, STATUS.md updated |
 | UI — overlay shell (`codex/posemy-ui`) | **PASS** | rebased onto main, merged, and the stranded right-panel sections restored to reachability |
+| UI — groups + anchors promoted | **PASS** | live re-verified 2026-10-02; see below |
+
+### Groups and anchors promoted to top-level menus
+
+A live audit against PoseMy.Art on 2026-10-02
+(`research/PARITY-LIVE-2026-10-02.md`) found the joint-group and anchor
+implementations correct and persisted, but buried several clicks deep inside
+the right-hand panel. PoseMy.Art gives each its own menu button
+(`groups_menu`, `anchor_menu` in its shipped lang table), so the feature was
+working but unreachable in the one place an artist would look for it.
+
+Both sections were moved out of the right panel and into the existing
+overlay system as two new `OverlayName` cases, with rail buttons to open
+them. No handler changed — `createGroup`, `resetGroup`, `deleteGroup`,
+`createAnchor` and `deleteAnchor` are the same functions as before, and the
+markup was moved verbatim. The buttons are disabled until a model is loaded,
+because both subsystems resolve their bone list from the active skeleton.
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm test` | **492 passed / 492** |
+| `npm run build` | succeeds (demo page regenerated) |
+| Browser: both buttons render in the rail, disabled with no model | **PASS** |
+| Browser: buttons enable after a model loads | **PASS** |
+| Browser: Joint Groups overlay lists 22 bones | **PASS** |
+| Browser: created `Left Leg Chain` from 3 bones, row reads `Left Leg Chain (3)` | **PASS** |
+| Browser: clicking the group reports `Reset 3 bone(s) in Left Leg Chain` | **PASS** |
+| Browser: Anchors overlay renders 2 selects + 3 offset fields | **PASS** |
+| Browser: created anchor, row reads `LeftFoot -> LeftUpLeg` | **PASS** |
 
 ### Phase 1 detail
 

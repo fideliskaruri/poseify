@@ -15,7 +15,7 @@ export interface BonePickOptions {
   pickRadius?: number;
 }
 
-const DEFAULT_PICK_RADIUS = 0.06;
+export const DEFAULT_PICK_RADIUS = 0.06;
 
 /**
  * Raycasts against bones and drives a TransformControls gizmo.
@@ -138,8 +138,20 @@ export class PoseController {
     if (this.pointerDown.distanceTo(new THREE.Vector2(e.clientX, e.clientY)) > 4) {
       return;
     }
+    // Attach mode owns the click: it needs the joint the user pointed at, not
+    // a bone selection. Returning true means "handled, do not also select".
+    if (this.onViewportClick?.(e) === true) return;
     this.selectBone(this.pickBone(e));
   };
+
+  /**
+   * Host hook for viewport clicks.
+   *
+   * Attach to Joint installs this so a click in the viewport picks a joint
+   * rather than selecting a bone for the FK gizmo. Return true to consume the
+   * event.
+   */
+  onViewportClick: ((event: PointerEvent) => boolean | void) | null = null;
 
   /** Nearest contract bone to the pointer ray, or null. */
   private pickBone(e: PointerEvent): string | null {

@@ -3,7 +3,11 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import * as THREE from "three";
 import { Viewport } from "../renderer/Viewport";
-import { PoseController, type InteractionMode } from "../posing/PoseController";
+import {
+  DEFAULT_PICK_RADIUS,
+  PoseController,
+  type InteractionMode,
+} from "../posing/PoseController";
 import { PosableSkeleton } from "../posing/PosableSkeleton";
 import {
   MODEL_CATALOG,
@@ -104,6 +108,7 @@ import {
   emptyScene,
   parseScene,
   sceneToJson,
+  type PropAttach,
   type SceneState,
 } from "../scene/Scene";
 import {
@@ -118,6 +123,12 @@ import {
   setObjectColor,
   type ObjectGizmoMode,
 } from "../scene/ObjectState";
+import { JointHandles } from "../posing/JointHandles";
+import {
+  applySavedAttach,
+  attachPropToBone,
+  detachPropFromBone,
+} from "../scene/PropAttach";
 import { History, historyShortcut } from "../scene/History";
 import { PREMADE_SCENES } from "../scene/PremadeScenes";
 import { loadGeneratedScenes } from "../scene/GeneratedScenes";
@@ -157,6 +168,14 @@ export interface PlacedProp {
   id: string;
   config: PropConfig;
   root: THREE.Object3D;
+  /**
+   * Joint this prop is pinned to, or null when it stands on its own.
+   *
+   * PoseMy.Art names the same idea `propAttachInfo`. Kept on the live prop as
+   * well as in the saved scene so the object panel can label the button
+   * Attach or Detach without re-deriving it from the parent chain.
+   */
+  attach: PropAttach | null;
 }
 
 export interface ImagePlaneEntry {
@@ -207,6 +226,13 @@ export function usePosing() {
   const boneNames = ref<string[]>([]);
   const loadingId = ref<string | null>(null);
   const objectController = shallowRef<ObjectController | null>(null);
+  const jointHandles = shallowRef<JointHandles | null>(null);
+  // Set while the user is choosing a joint for a prop. The prop id and the
+  // pending bone are held together so a click in the viewport can be routed to
+  // exactly one prop.
+  const attachModeFor = ref<string | null>(null);
+  const attachError = ref<string | null>(null);
+  const attachStatus = ref<string | null>(null);
   // Set while a gizmo drag is moving; consumed on drag end to push one history
   // entry per drag rather than per frame.
   const gizmoDirty = ref(false);
@@ -290,6 +316,9 @@ export function usePosing() {
     controller.value?.setSkeleton(posed?.skeleton ?? null);
     boneNames.value = posed ? [...posed.skeleton.getBoneNames()] : [];
     selectedBone.value = null;
+    // Handles belong to whichever figure is active, and an attach in flight
+    // targets that figure's joints.
+    refreshHandles();
   }
 
   function selectBone(name: string | null): void {
@@ -771,6 +800,33 @@ export function usePosing() {
     vp.environment.frame(box, vp.controls);
   }
 
+  /**
+   * TEMPORARY diagnostic for "model loaded but not visible".
+   *
+   * Reads the live scene rather than anything cached, so the numbers describe
+   * what is actually about to be rendered. Removed once the cause is fixed.
+   */
+  function modelDebug(): string {
+    const vp = viewport.value;
+    if (!vp || models.value.length === 0) return "no models";
+    const m = models.value[0];
+    m.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(m.root);
+    const f = (n: number) => n.toFixed(2);
+    const cam = vp.camera.position;
+    const empty = box.isEmpty();
+    return [
+      `count=${models.value.length}`,
+      `box=${empty ? "EMPTY" : `${f(box.min.x)},${f(box.min.y)},${f(box.min.z)}..${f(box.max.x)},${f(box.max.y)},${f(box.max.z)}`}`,
+      `h=${empty ? "n/a" : f(box.max.y - box.min.y)}`,
+      `rootPos=${f(m.root.position.x)},${f(m.root.position.y)},${f(m.root.position.z)}`,
+      `rootScale=${f(m.root.scale.x)}`,
+      `visible=${m.root.visible}`,
+      `bones=${m.skeleton.getBoneNames().length}`,
+      `cam=${f(cam.x)},${f(cam.y)},${f(cam.z)}`,
+    ].join(" ");
+  }
+
   const fov = ref(50);
   const light = ref<LightState>({
     azimuth: 40,
@@ -888,6 +944,24 @@ export function usePosing() {
     pc.onSelect = (name) => {
       selectedBone.value = name;
     };
+    // While a prop is waiting for a joint, a viewport click picks the joint
+    // instead of selecting a bone. The handles do the picking, so the target
+    // is guaranteed to be a joint the artist can actually see.
+    pc.onViewportClick = (event) => {
+      if (attachModeFor.value === null) return;
+      const vp = viewport.value;
+      const handles = jointHandles.value;
+      if (!vp || !handles) return true;
+      const rect = vp.renderer.domElement.getBoundingClientRect();
+      const raycaster = new THREE.Raycaster();
+      const ndc = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, vp.camera);
+      attachPendingPropToBone(handles.pickBone(raycaster, DEFAULT_PICK_RADIUS));
+      return true;
+    };
     vp.scene.add(pc.helper);
     controller.value = pc;
 
@@ -906,6 +980,14 @@ export function usePosing() {
     vp.scene.add(oc.helper);
     objectController.value = oc;
 
+    // Visible joint handles. PoseMy.Art draws a sphere on every joint and
+    // blinks them while Attach to Joint is live; these are the click targets
+    // that make the mode usable at all, and they stay available as a plain
+    // toggle so an artist can see what they are aiming at while posing.
+    const handles = new JointHandles();
+    vp.scene.add(handles.object);
+    jointHandles.value = handles;
+
     // Clip playback advances on the render loop's clock. The gizmo check turns
     // a finished drag into exactly one history entry: objectChange fires on
     // every frame of the drag, so we wait until dragging stops and commit once.
@@ -914,6 +996,9 @@ export function usePosing() {
       // Anchors run after IK and before the frame is presented, so an anchored
       // joint wins over a solution being dragged.
       updateAnchors();
+      // Handles follow the pose, so they re-place after every frame that moved
+      // something rather than only on attach.
+      jointHandles.value?.sync();
       if (gizmoDirty.value && !objectController.value?.dragging) {
         gizmoDirty.value = false;
         commit();
@@ -933,6 +1018,7 @@ export function usePosing() {
   }
 
   function dispose(): void {
+    jointHandles.value?.dispose();
     objectController.value?.dispose();
     controller.value?.dispose();
     viewport.value?.dispose();
@@ -1395,6 +1481,7 @@ export function usePosing() {
         id: `${config.id}_${props.value.length}`,
         config,
         root,
+        attach: null,
       };
       props.value = [...props.value, placed];
       selectedPropId.value = placed.id;
@@ -1427,6 +1514,7 @@ export function usePosing() {
           size: [1, 1, 1],
         },
         root,
+        attach: null,
       };
       props.value = [...props.value, placed];
       selectedPropId.value = placed.id;
@@ -1513,6 +1601,7 @@ export function usePosing() {
           path: `${VENDOR_PROP_BASE}/${entry.file}`,
         },
         root,
+        attach: null,
       };
       props.value = [...props.value, placed];
       selectedPropId.value = placed.id;
@@ -1525,7 +1614,10 @@ export function usePosing() {
     const vp = viewport.value;
     const placed = props.value.find((p) => p.id === id);
     if (!placed || !vp) return;
-    vp.scene.remove(placed.root);
+    // An attached prop is a child of a bone, not of the scene, so removing it
+    // from the scene would silently leave it riding the figure.
+    if (!detachPropFromBone(placed.root)) vp.scene.remove(placed.root);
+    if (attachModeFor.value === id) stopAttachMode();
     props.value = props.value.filter((p) => p.id !== id);
     if (selectedPropId.value === id) selectedPropId.value = null;
     commit();
@@ -1536,6 +1628,126 @@ export function usePosing() {
     const placed = props.value.find((p) => p.id === id);
     if (placed) snapToFloor(placed.root);
   }
+
+  // ------------------------------------------ attach a prop to a joint
+
+  /** The prop currently waiting for a joint, or null. */
+  const attachingProp = computed<PlacedProp | null>(
+    () => props.value.find((p) => p.id === attachModeFor.value) ?? null,
+  );
+
+  /** True while the viewport is waiting for a joint click. */
+  const attachModeActive = computed(() => attachModeFor.value !== null);
+
+  /**
+   * The selected prop when it could actually be attached, else null.
+   *
+   * The toolbar button binds to this so it disappears for a model and for the
+   * no-model case, rather than sitting disabled and implying a bug.
+   */
+  const attachableSelectedProp = computed<PlacedProp | null>(() => {
+    if (!activeModelId.value) return null;
+    const id = selectedObjectId.value;
+    if (!id) return null;
+    return props.value.find((p) => p.id === id) ?? null;
+  });
+
+  /** Keep the handles pointed at whatever is active. */
+  function refreshHandles(): void {
+    const handles = jointHandles.value;
+    if (!handles) return;
+    handles.setSkeleton(activeSkeleton());
+    // Visible whenever the mode is live, so the artist can see the joints they
+    // are about to choose. Left off otherwise so posing stays uncluttered.
+    handles.setVisible(attachModeFor.value !== null);
+    handles.setHighlighted(attachModeFor.value !== null);
+  }
+
+  /**
+   * Enter attach mode for a prop, or detach it if it is already pinned.
+   *
+   * One button for both, matching PoseMy.Art: the label is derived from
+   * whether the prop currently has an attach record, so the artist never has
+   * to remember which of the two a prop is in.
+   */
+  function toggleAttachToJoint(id: string): boolean {
+    const placed = props.value.find((p) => p.id === id);
+    const skeleton = activeSkeleton();
+    if (!placed) return false;
+    if (!skeleton) {
+      attachError.value = "Add and select a model first.";
+      return false;
+    }
+
+    if (placed.attach) {
+      detachPropFromBone(placed.root);
+      placed.attach = null;
+      viewport.value?.scene.add(placed.root);
+      stopAttachMode();
+      attachError.value = null;
+      attachStatus.value = `Detached ${placed.config.name} from ${placed.root.userData.lastAttachBone ?? "the joint"}`;
+      commit();
+      return true;
+    }
+
+    // Store the bone name for the status line before the attach overwrites the
+    // userData slot detach reads it back from.
+    placed.root.userData.lastAttachBone = "";
+    attachModeFor.value = id;
+    attachError.value = null;
+    attachStatus.value = `Pick a joint for ${placed.config.name}`;
+    refreshHandles();
+    // The prop gizmo would fight the joint click for the pointer.
+    objectController.value?.detach();
+    return true;
+  }
+
+  /** Leave attach mode without changing anything. */
+  function stopAttachMode(): void {
+    attachModeFor.value = null;
+    attachStatus.value = null;
+    refreshHandles();
+  }
+
+  /**
+   * Pin the pending prop to the bone the user just clicked.
+   *
+   * Reports the missing bone by name when the click did not land on one, since
+   * "nothing happened" is the worst possible feedback here.
+   */
+  function attachPendingPropToBone(boneName: string | null): boolean {
+    const placed = attachingProp.value;
+    const skeleton = activeSkeleton();
+    if (!placed || !skeleton) return false;
+    if (!boneName) {
+      attachError.value = "Click one of the highlighted joints to attach.";
+      return false;
+    }
+    const bone = skeleton.getBone(boneName);
+    if (!bone) {
+      attachError.value = `${skeleton.config.name} has no joint called ${boneName}.`;
+      return false;
+    }
+    // A prop already riding one bone must leave it first, or a re-attach would
+    // nest a bone inside a bone. Harmless when it is a plain scene child.
+    detachPropFromBone(placed.root);
+    placed.attach = attachPropToBone(placed.root, bone);
+    placed.root.userData.lastAttachBone = boneName;
+    attachModeFor.value = null;
+    attachError.value = null;
+    attachStatus.value = `${placed.config.name} attached to ${boneName}`;
+    refreshHandles();
+    commit();
+    return true;
+  }
+
+  /** Show or hide the joint handles without entering attach mode. */
+  function setJointHandlesVisible(visible: boolean): void {
+    jointHandles.value?.setVisible(visible || attachModeFor.value !== null);
+    jointHandlesVisible.value = visible;
+  }
+
+  const jointHandlesVisible = ref(false);
 
   // ------------------------------------------- Phase 1: object-level operations
 
@@ -1767,6 +1979,7 @@ export function usePosing() {
           scale: [p.root.scale.x, p.root.scale.y, p.root.scale.z],
         },
         state: readObjectState(p.root),
+        attach: p.attach ?? undefined,
       })),
       camera: vp
         ? {
@@ -1884,10 +2097,29 @@ export function usePosing() {
       if (spec.state?.locked) setLocked(root, true);
       if (spec.state?.color) setObjectColor(root, spec.state.color);
       vp.scene.add(root);
-      props.value = [
-        ...props.value,
-        { id: `${config.id}_${props.value.length}`, config, root },
-      ];
+      const placedProp: PlacedProp = {
+        id: `${config.id}_${props.value.length}`,
+        config,
+        root,
+        attach: null,
+      };
+      // Re-pin to the recorded joint. Models load before props in this
+      // function, so the bone exists by the time an attach is applied.
+      if (spec.attach) {
+        const owner = models.value.find(
+          (m) => m.skeleton.getBone(spec.attach!.bone) !== undefined,
+        );
+        const bone = owner?.skeleton.getBone(spec.attach.bone);
+        if (bone && applySavedAttach(root, bone, spec.attach)) {
+          placedProp.attach = spec.attach;
+          root.userData.lastAttachBone = spec.attach.bone;
+        } else {
+          // The scene names a joint this model does not have. The prop still
+          // loads, standing free, and says so rather than vanishing.
+          missing.push(`${config.name} -> ${spec.attach.bone}`);
+        }
+      }
+      props.value = [...props.value, placedProp];
     }
 
     vp.camera.position.fromArray(state.camera.position);
@@ -2196,6 +2428,15 @@ export function usePosing() {
       case "help":
         settingsOpen.value = true;
         break;
+      case "cancelAttach":
+        // Attach mode first: a half-finished attach should be abandonable
+        // without also losing the prop the artist selected.
+        if (attachModeFor.value !== null) {
+          stopAttachMode();
+          break;
+        }
+        selectObject(null);
+        break;
     }
   }
 
@@ -2214,6 +2455,15 @@ export function usePosing() {
     boneNames,
     loadingId,
     hasRemoteModels,
+    attachModeActive,
+    attachingProp,
+    attachableSelectedProp,
+    attachError,
+    attachStatus,
+    jointHandlesVisible,
+    toggleAttachToJoint,
+    stopAttachMode,
+    setJointHandlesVisible,
     fov,
     light,
     grid,
@@ -2288,6 +2538,7 @@ export function usePosing() {
     resetHands,
     loadThumbnails,
     frameScene,
+    modelDebug,
     RENDER_PASSES,
     exporting,
     exportResults,

@@ -48,6 +48,20 @@ export interface SceneProp {
   state?: ObjectState;
   // URL for an imported asset; built-in props omit this.
   path?: string;
+  /**
+   * Joint this prop is pinned to, or undefined when it stands on its own.
+   *
+   * Mirrors PoseMy.Art's `propAttachInfo`. Stored by bone name rather than by
+   * a bone reference so the record is plain JSON: a saved scene has no live
+   * skeleton to point at.
+   */
+  attach?: PropAttach;
+}
+
+/** A prop pinned to a joint, with its offset in that bone's local space. */
+export interface PropAttach {
+  bone: string;
+  offset: [number, number, number];
 }
 
 export interface SceneCamera {
@@ -210,6 +224,27 @@ export function parseScene(text: string): SceneState | null {
       };
       const state = objectState(p.state);
       if (state) prop.state = state;
+      // Only accept a well-formed attach record. A scene naming a bone this
+      // model does not have is still loaded; the attach is simply dropped and
+      // the prop stands free, which is recoverable and better than refusing
+      // the whole scene.
+      const attach = p.attach as Partial<PropAttach> | undefined;
+      if (
+        attach &&
+        typeof attach.bone === "string" &&
+        Array.isArray(attach.offset) &&
+        attach.offset.length === 3 &&
+        attach.offset.every(isFiniteNumber)
+      ) {
+        prop.attach = {
+          bone: attach.bone,
+          offset: [
+            attach.offset[0] as number,
+            attach.offset[1] as number,
+            attach.offset[2] as number,
+          ],
+        };
+      }
       props.push(prop);
     }
 
