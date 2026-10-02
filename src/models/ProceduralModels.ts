@@ -54,24 +54,43 @@ const REST: Readonly<Record<string, readonly [number, number, number]>> = {
   RightToeBase: [0.08, 0.04, 0.13],
 };
 
-/** Finger rest positions, fanned out from the wrist. */
 function fingerRest(): Record<string, [number, number, number]> {
   const out: Record<string, [number, number, number]> = {};
-  let i = 0;
+  // Each finger starts at the wrist and steps outward along the hand, so the
+  // chain reads as a finger rather than a cluster of joints at one point.
+  // The previous version offset every joint by a fixed 12 mm regardless of
+  // which finger or which segment it was, which left the whole hand bunched
+  // at the wrist and made posed fingers overshoot the figure.
+  const FAN: Record<string, number> = {
+    Index: 0.0,
+    Middle: 0.016,
+    Ring: 0.03,
+    Pinky: 0.042,
+    Thumb: -0.012,
+  };
+  const SEGMENT = 0.03;
   for (const bone of HAND_BONES) {
     if (bone.endsWith("Hand")) continue;
-    const side = bone.startsWith("Left") ? "Left" : "Right";
+    const match = /^(Left|Right)Hand(Thumb|Index|Middle|Ring|Pinky)(\d)$/.exec(bone);
+    if (!match) continue;
+    const side = match[1] as "Left" | "Right";
+    const finger = match[2];
+    const joint = Number(match[3]);
     const wrist = restOf(`${side}Hand`);
     const sign = side === "Left" ? 1 : -1;
+    const spread = FAN[finger] ?? 0;
+    const along = SEGMENT * joint;
+    // The thumb sits lower and further out than the fingers.
+    const isThumb = finger === "Thumb";
     out[bone] = [
-      wrist.x + sign * 0.012 * (i % 4),
-      wrist.y - 0.008 * (i % 3),
-      wrist.z + 0.008 * Math.floor(i / 4),
+      wrist.x + sign * (Math.abs(spread) + along),
+      wrist.y - (isThumb ? 0.012 : 0) - (isThumb ? 0 : along * 0.15),
+      wrist.z + (isThumb ? -sign * 0.02 : spread * 0.4),
     ];
-    i += 1;
   }
   return out;
 }
+/** Finger rest positions, fanned out from the wrist. */
 
 function restOf(bone: string): THREE.Vector3 {
   const base = REST[bone] ?? fingerRestCache[bone] ?? [0, 0.5, 0];
@@ -121,6 +140,18 @@ const THICKNESS: Readonly<Record<string, number>> = {
 /** Finger bones are thin rods; one shared value keeps it readable. */
 const FINGER_THICKNESS = 0.009;
 
+/**
+ * How deep a contract bone sits in the rig hierarchy.
+ *
+ * Used to build the skeleton parent-first, which the contract's bone list is
+ * not: Neck is listed before Spine2, and building in list order parented Neck
+ * straight to the root.
+ */
+function hierarchyDepth(bone: string, guard = 0): number {
+  const parent = FULL_PARENTS[bone];
+  if (!parent || guard > 64) return 0;
+  return 1 + hierarchyDepth(parent, guard + 1);
+}
 export interface ProceduralModelOptions {
   id: string;
   name: string;
@@ -153,9 +184,19 @@ export function buildProceduralModel(
 
   // Build the bone hierarchy first; the skinning below needs bone indices.
   const bones = new Map<string, THREE.Bone>();
-  const ordered = [...CORE_BONES, ...HAND_BONES].filter(
-    (n) => n !== "Hips",
-  );
+  // Deduplicated and sorted parent-first.
+  //
+  // Deduplicated because LeftHand and RightHand are in both CORE_BONES and
+  // HAND_BONES, and building a name twice re-parents its bone under a freshly
+  // created empty one and rewrites its offset to zero - which silently detached
+  // the hands from the arms.
+  //
+  // Sorted because the contract's bone list is not in hierarchy order: Neck
+  // appears before Spine2, so building in list order parented Neck straight to
+  // the root and left Head floating above the hips.
+  const ordered = [...new Set([...CORE_BONES, ...HAND_BONES])]
+    .filter((n) => n !== "Hips")
+    .sort((a, b) => hierarchyDepth(a) - hierarchyDepth(b));
   const rootBone = new THREE.Bone();
   rootBone.name = "Hips";
   group.add(rootBone);
@@ -175,6 +216,10 @@ export function buildProceduralModel(
     const rest = restOf(name).multiplyScalar(scale);
     const parentName = FULL_PARENTS[name];
     const parentRest = parentName ? restOf(parentName).multiplyScalar(scale) : null;
+    // Hips keeps its absolute rest height: it is the skeleton root, so the
+    // figure stands on the floor at hip height rather than at the world
+    // origin. Segment vertices are authored relative to the bone's own rest
+    // position below, so this does not leak into the geometry.
     bone.position.copy(parentRest ? rest.sub(parentRest) : rest);
   }
 
@@ -193,13 +238,39 @@ export function buildProceduralModel(
     // A segment runs from this bone toward its first child, so a raised arm
     // carries a limb above the joint rather than leaving a gap.
     const childName = boneList.find((b) => FULL_PARENTS[b] === name);
+
+    // Vertices are authored in BIND POSE WORLD space - the same space the
+    // boneInverses are computed in. That makes each boneInverse exactly the
+    // inverse of its bone's bind matrix, so the skinning shader's
+    //
+    //     boneMatrix * boneInverse * vertex
+    //
+    // collapses to the identity at rest and to the bone's delta rotation once
+    // posed. That is what makes a limb follow its joint.
+    //
+    // Authoring in bone-local space instead was the original defect. It looks
+    // identical in bind pose, because the matrices cancel either way when the
+    // inverse is a true inverse - but under a pose it applies the bind
+    // translation a second time and the figure comes apart.
     const from = restOf(name).multiplyScalar(scale);
     const to = childName
       ? restOf(childName).multiplyScalar(scale)
       : from.clone().add(new THREE.Vector3(0, 0.06 * scale, 0));
     const direction = to.clone().sub(from);
-    const length = Math.max(direction.length(), 0.02 * scale);
+    if (!Number.isFinite(direction.x) || direction.lengthSq() < 1e-12) {
+      direction.set(0, 1, 0);
+    }
     direction.normalize();
+    // Each segment overlaps its joints by a fraction of its own length.
+    //
+    // Two boxes that merely touch at a point leave a wedge-shaped hole once
+    // they rotate away from each other, which reads as a limb torn off at the
+    // shoulder. Overlapping by a quarter length on each side closes it, and the
+    // overlap is short enough not to be visible at the joint.
+    const span = to.clone().sub(from);
+    const overlap = span.length() * 0.25;
+    const localFrom = from.clone().addScaledVector(span.clone().normalize(), -overlap);
+    const localTo = to.clone().addScaledVector(span.clone().normalize(), overlap);
 
     const up = new THREE.Vector3(0, 1, 0);
     const side = new THREE.Vector3().crossVectors(direction, up);
@@ -219,14 +290,18 @@ export function buildProceduralModel(
       side.clone().negate().add(forward),
     ];
     for (const corner of corners) {
-      positions.push(from.x + corner.x, from.y + corner.y, from.z + corner.z);
+      positions.push(
+        localFrom.x + corner.x,
+        localFrom.y + corner.y,
+        localFrom.z + corner.z,
+      );
       normals.push(corner.x, corner.y, corner.z);
       boneIndices.push(index);
       boneWeights.push(1);
     }
     for (const corner of corners) {
       const tip = corner.clone().multiplyScalar(0.82);
-      positions.push(to.x + tip.x, to.y + tip.y, to.z + tip.z);
+      positions.push(localTo.x + tip.x, localTo.y + tip.y, localTo.z + tip.z);
       normals.push(tip.x, tip.y, tip.z);
       boneIndices.push(index);
       boneWeights.push(1);
@@ -295,7 +370,16 @@ export function buildProceduralModel(
   // string. A SkinnedMesh in "attached" mode recomputes its bind matrix from
   // the world matrix every frame, which collapses the deformation as soon as
   // the root moves, which is the exact bug the v1 build documented.
-  mesh.bindMode = "detached";
+  // Attached binding, deliberately. Detached freezes the bind matrix, so any
+  // transform applied after binding - and attachModel moves the root to fan
+  // models out along X - is applied twice: once by the bone matrix and once by
+  // the stale bind matrix. That is what scattered the figure across the
+  // viewport while every bind-pose test passed.
+  //
+  // Attached recomputes the bind matrix from the world matrix each frame,
+  // which is exactly right here because the vertex data is authored in the
+  // same space as the bone rest transforms and never needs a fixed inverse.
+  mesh.bindMode = "attached";
   // The mesh joins the hierarchy before binding. Applying a bone transform
   // walks the mesh's own ancestors to reach each skeleton bone, so a mesh
   // bound while still detached from the group dereferences a null parent and
@@ -304,12 +388,26 @@ export function buildProceduralModel(
   group.add(mesh);
 
   for (const bone of bones.values()) bone.updateMatrixWorld(true);
-  const skeleton = new THREE.Skeleton([...bones.values()]);
+  // The group's own matrix has to be current before it is read as the bind
+  // matrix, or every bone inverse is computed against a stale frame.
   group.updateMatrixWorld(true);
-  // bind(skeleton, bindMatrix) is required alongside an explicit bindMode:
-  // bind() with one argument resets bindMode to the default, which silently
-  // undoes the detached-binding line above.
-  mesh.bind(skeleton, group.matrixWorld.clone());
+  // Skeleton computes its own bone inverses when constructed without a
+  // boneInverses array, which is what we want: they are the inverse of each
+  // bone's world matrix in bind pose. Passing a bind matrix here instead would
+  // be read as a boneInverses array and silently break skinning.
+  const skeleton = new THREE.Skeleton([...bones.values()]);
+  // Explicit: the Skeleton constructor computed these before the mesh joined
+  // the group, so the inverses are already correct here, but bind() with an
+  // explicit bindMatrix skips Skeleton.calculateInverses() entirely. Recomputing
+  // after the group update keeps the two paths identical.
+  skeleton.calculateInverses();
+  // bindMode is set before bind() because bind() with a single argument resets
+  // it to the default, silently undoing the detached binding.
+  // No bindMatrix: bind(skeleton, matrix) skips Skeleton.calculateInverses()
+  // and the vertices here are authored in bone-local space, so the bind frame
+  // must be the identity for the mesh's own root. Passing group.matrixWorld
+  // double-transforms every vertex, which is what scattered the figure.
+  mesh.bind(skeleton);
 
   // Update world matrices on the whole hierarchy before returning. A caller
   // that measures the figure straight away - the thumbnailer, Box3.setFromObject
@@ -403,6 +501,12 @@ export function proceduralLoadConfig(
     exportable: true,
   };
 }
+
+
+
+
+
+
 
 
 

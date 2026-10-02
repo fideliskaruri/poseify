@@ -313,6 +313,18 @@ function heuristicPass(
 //
 // Unresolved bones land in `missing`. With throwOnFailure the function raises
 // loudly instead of returning a half-rigged model.
+/**
+ * Map an arbitrary bone name onto a contract name, or null when it is not one.
+ *
+ * Exported so pose data from any source (vendor files, hand poses, imported
+ * animation) is mapped through exactly the same rules the skeleton retargeter
+ * uses. Re-deriving namespace and alias handling in a second place is how the
+ * two drift apart and a pose silently lands on the wrong joint.
+ */
+export function resolveContractBoneName(name: string): string | null {
+  return contractBoneFromName(name);
+}
+
 export function retargetSkeleton(
   root: THREE.Object3D,
   options: RetargetOptions = {},
@@ -404,3 +416,4 @@ export function retargetSkeleton(
 }
 
 export { HIP_BONE };
+

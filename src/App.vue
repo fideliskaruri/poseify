@@ -65,6 +65,25 @@ const {
   handPoseStatus,
   handPoseSearch,
   visibleHandPoses,
+  vendorSceneIndex,
+  vendorPoseIndex,
+  loadVendorPoseLibrary,
+  vendorPoseError,
+  vendorPoseTags,
+  visibleVendorPoses,
+  applyVendorPose,
+  vendorThumb,
+  vendorPropSearch,
+  vendorPropFamily,
+  vendorPropFamilies,
+  visibleVendorProps,
+  vendorPropThumb,
+  addVendorProp,
+  loadVendorSceneLibrary,
+  vendorSceneError,
+  vendorSceneTags,
+  visibleVendorScenes,
+  applyVendorScene,
   applyHandPose,
   copyHandPose,
   pasteHandOnly,
@@ -186,6 +205,8 @@ onMounted(() => {
   refreshSavedScenes();
   void loadGeneratedLibrary();
   void loadGeneratedSceneLibrary();
+  void loadVendorPoseLibrary();
+  void loadVendorSceneLibrary();
 });
 
 onMounted(() => {
@@ -273,6 +294,25 @@ function onSceneFile(event: Event): void {
 }
 
 const premadeScenes = allPremadeScenes;
+
+// Reference library tab. The three vendor sources are listed in one panel with
+// a tab each, rather than as three separate sections: they are all "the big
+// library", and an artist browsing poses does not want to hunt for them.
+const libraryTab = ref<"poses" | "props" | "scenes">("poses");
+const librarySearch = ref("");
+
+const filteredVendorPoses = computed(() => {
+  const needle = librarySearch.value.trim().toLowerCase();
+  if (!needle) return visibleVendorPoses.value;
+  // The vendor search already honours poseSearch; this narrows further on the
+  // library box without having to re-fetch anything.
+  return visibleVendorPoses.value.filter(
+    (row) =>
+      row.name.toLowerCase().includes(needle) ||
+      row.category.toLowerCase().includes(needle) ||
+      row.description.toLowerCase().includes(needle),
+  );
+});
 const shortcutHelp = SHORTCUT_HELP;
 
 // Render thumbnails lazily: only the poses currently visible in the picker,
@@ -1063,6 +1103,121 @@ watch(
         <p v-else class="hint">No anchors yet.</p>
       </section>
 
+      <section v-if="activeModelId" class="vendor-lib">
+        <h2>Reference library</h2>
+        <p class="hint">
+          {{ vendorPoseIndex.length.toLocaleString() }} reference poses,
+          {{ visibleVendorProps.length.toLocaleString() }} props and
+          {{ vendorSceneIndex.length.toLocaleString() }} scenes, fetched from the
+          local asset library on demand.
+        </p>
+        <p v-if="vendorPoseError" class="hint warn">
+          Reference poses unavailable: {{ vendorPoseError }}
+        </p>
+
+        <div class="row wrap">
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: libraryTab === 'poses' }"
+            @click="libraryTab = 'poses'"
+          >
+            Poses
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: libraryTab === 'props' }"
+            @click="libraryTab = 'props'"
+          >
+            Props
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="{ on: libraryTab === 'scenes' }"
+            @click="libraryTab = 'scenes'"
+          >
+            Scenes
+          </button>
+        </div>
+
+        <label class="field">
+          <span>Search library</span>
+          <input v-model="librarySearch" type="search" placeholder="e.g. sword, dance, chair" />
+        </label>
+
+        <template v-if="libraryTab === 'poses'">
+          <p v-if="!vendorPoseIndex.length" class="hint">No reference poses loaded.</p>
+          <div v-else class="pose-grid vendor-grid">
+            <button
+              v-for="row in filteredVendorPoses"
+              :key="row.id"
+              type="button"
+              class="pose-tile"
+              :title="`${row.name} — ${row.category}`"
+              @click="applyVendorPose(row)"
+            >
+              <img
+                v-if="vendorThumb(row)"
+                :src="vendorThumb(row)!"
+                :alt="`${row.name} reference`"
+                loading="lazy"
+              />
+              <span v-else class="thumb placeholder" aria-hidden="true"></span>
+              <span class="pose-name">{{ row.name }}</span>
+            </button>
+          </div>
+          <p class="hint">
+            {{ filteredVendorPoses.length.toLocaleString() }} of
+            {{ vendorPoseIndex.length.toLocaleString() }} poses
+          </p>
+        </template>
+
+        <template v-else-if="libraryTab === 'props'">
+          <label class="field">
+            <span>Family</span>
+            <select v-model="vendorPropFamily">
+              <option :value="null">All families</option>
+              <option v-for="f in vendorPropFamilies" :key="f" :value="f">{{ f }}</option>
+            </select>
+          </label>
+          <div class="prop-grid vendor-grid">
+            <button
+              v-for="prop in visibleVendorProps"
+              :key="prop.id"
+              type="button"
+              class="prop-tile"
+              :title="prop.name"
+              @click="addVendorProp(prop)"
+            >
+              <img
+                v-if="vendorPropThumb(prop)"
+                :src="vendorPropThumb(prop)!"
+                :alt="`${prop.name} prop`"
+                loading="lazy"
+              />
+              <span v-else class="thumb placeholder" aria-hidden="true"></span>
+              <span class="pose-name">{{ prop.name.trim() }}</span>
+            </button>
+          </div>
+          <p class="hint">{{ visibleVendorProps.length.toLocaleString() }} props</p>
+        </template>
+
+        <template v-else>
+          <p v-if="vendorSceneError" class="hint warn">{{ vendorSceneError }}</p>
+          <p v-else-if="!vendorSceneIndex.length" class="hint">No reference scenes loaded.</p>
+          <ul v-else class="list vendor-list">
+            <li v-for="row in visibleVendorScenes" :key="row.id">
+              <button type="button" :title="row.description" @click="applyVendorScene(row)">
+                {{ row.name }}
+              </button>
+            </li>
+          </ul>
+          <p class="hint">{{ visibleVendorScenes.length.toLocaleString() }} scenes</p>
+        </template>
+      </section>
+
       <section v-if="activeModelId">
         <h2>Hand poses</h2>
         <p class="hint">
@@ -1647,6 +1802,25 @@ button.chip.wide {
   background: #1b1f27;
   color: var(--poseify-text);
   font-size: 11px;
+}
+
+.vendor-grid {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.vendor-grid .pose-tile img,
+.vendor-grid .prop-tile img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 5px;
+  background: #101319;
+}
+
+.vendor-list {
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .bone-tags {
@@ -2313,6 +2487,10 @@ button.chip:disabled {
   background: #6fb4ff;
 }
 </style>
+
+
+
+
 
 
 

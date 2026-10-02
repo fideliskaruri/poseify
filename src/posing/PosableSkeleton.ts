@@ -162,10 +162,12 @@ export class PosableSkeleton {
   private applyDown(name: string): void {
     const bone = this.bones.get(name);
     if (!bone) return;
+    // updateMatrixWorld(true) recurses the whole subtree with force=true, which
+    // is what is needed here: a finger's world matrix is composed through
+    // wrist, forearm, arm and spine, so updating only the direct child leaves
+    // every deeper descendant stale. A full-body pose then skinning-deforms
+    // against those stale frames and the mesh comes apart.
     bone.updateMatrixWorld(true);
-    for (const child of bone.children) {
-      if (child instanceof THREE.Bone) child.updateMatrixWorld(true);
-    }
   }
 
   getBoneQuaternion(name: string): THREE.Quaternion | null {

@@ -45,6 +45,14 @@ import { exportSceneObj, type SceneObjSource } from "../export/ObjExport";
 import type { ObjExportResult } from "../export/Exporter";
 import { POSE_LIBRARY } from "../pose/PoseLibrary";
 import { loadGeneratedPoses } from "../pose/GeneratedPoseLibrary";
+import {
+  loadVendorPose,
+  loadVendorPoseIndex,
+  searchVendorPoses,
+  vendorPoseCategories,
+  vendorPoseThumb,
+  type VendorPoseSummary,
+} from "../pose/VendorPoseLibrary";
 import { PoseClipboard, randomPoseIndex } from "../pose/PoseClipboard";
 import {
   HAND_POSE_LIBRARY,
@@ -79,6 +87,12 @@ import {
   findProp,
 } from "../props/PropCatalog";
 import {
+  VENDOR_PROP_BASE,
+  VENDOR_PROP_THUMB_BASE,
+  VENDOR_PROP_CATALOG,
+  type VendorPropEntry,
+} from "../props/VendorPropCatalog";
+import {
   centreOnOrigin,
   loadPropFromFile,
   measure,
@@ -107,6 +121,13 @@ import {
 import { History, historyShortcut } from "../scene/History";
 import { PREMADE_SCENES } from "../scene/PremadeScenes";
 import { loadGeneratedScenes } from "../scene/GeneratedScenes";
+import {
+  loadVendorScene,
+  loadVendorSceneIndex,
+  searchVendorScenes,
+  vendorSceneCategories,
+  type VendorSceneSummary,
+} from "../scene/VendorSceneLoader";
 import {
   deleteScene,
   downloadScene,
@@ -1092,6 +1113,81 @@ export function usePosing() {
   // 98 come first so a freshly opened picker leads with the hand-written poses
   // an artist curated, rather than 1,200 generated ones.
   const generatedPoses = shallowRef<readonly Pose[]>([]);
+
+  // Vendor pose library: the creator-approved scrape, fetched once. Kept as a
+  // separate source rather than merged into the local libraries so the picker
+  // can show where a pose came from and so a missing vendor payload degrades
+  // to the 1,298 local poses instead of emptying the picker.
+  const vendorPoseIndex = shallowRef<readonly VendorPoseSummary[]>([]);
+  const vendorPoseError = ref<string | null>(null);
+
+  async function loadVendorPoseLibrary(): Promise<void> {
+    try {
+      vendorPoseIndex.value = await loadVendorPoseIndex();
+      vendorPoseError.value = null;
+    } catch (err) {
+      vendorPoseError.value = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /** Categories the vendor library actually contains, for the filter UI. */
+  const vendorPoseTags = computed(() => vendorPoseCategories(vendorPoseIndex.value));
+
+  /**
+   * Vendor poses matching the current search and tag filter.
+   *
+   * A separate list from visiblePoses because each row needs its own async
+   // load: the index carries metadata only, and the rotations live in a
+   // per-pose file fetched on click.
+   */
+  const visibleVendorPoses = computed(() =>
+    // The vendor search takes one category, not a list, so the multi-tag
+    // filter is applied afterwards rather than being flattened into one string.
+    searchVendorPoses(
+      vendorPoseIndex.value,
+      poseSearch.value,
+      poseTagFilter.value.length === 1 ? poseTagFilter.value[0] : undefined,
+    ).filter(
+      (row) =>
+        poseTagFilter.value.length <= 1 ||
+        poseTagFilter.value.some((tag) =>
+          row.category.toLowerCase().split(",").some((c) => c.trim() === tag),
+        ),
+    ),
+  );
+
+  /** Fetch one vendor pose and apply it to the active model. */
+  async function applyVendorPose(summary: VendorPoseSummary): Promise<boolean> {
+    const active = models.value.find((m) => m.config.id === activeModelId.value);
+    if (!active) {
+      poseError.value = "Add and select a model first.";
+      return false;
+    }
+    try {
+      const pose = await loadVendorPose(summary);
+      const known = new Set(active.skeleton.getBoneNames());
+      const unknown = Object.keys(pose.bones).filter((b) => !known.has(b));
+      if (unknown.length > 0) {
+        poseError.value =
+          `${active.config.name} cannot take "${pose.name}": ` +
+          `missing ${unknown.length} bone(s) (${unknown.slice(0, 3).join(", ")}).`;
+        return false;
+      }
+      active.skeleton.applyPose(pose.bones);
+      appliedPoseId.value = pose.id;
+      poseError.value = null;
+      commit();
+      return true;
+    } catch (err) {
+      poseError.value = err instanceof Error ? err.message : String(err);
+      return false;
+    }
+  }
+
+  /** Thumbnail URL for a vendor pose, or null when the scrape missed it. */
+  function vendorThumb(summary: VendorPoseSummary): string | null {
+    return vendorPoseThumb(summary);
+  }
   const poseLibraryError = ref<string | null>(null);
 
   /**
@@ -1340,6 +1436,91 @@ export function usePosing() {
     }
   }
 
+  // Vendor props: the creator-approved scrape, loaded on demand from FBX. A
+  // separate list from the procedural catalogue so the picker can group them
+  // and so a missing asset leaves the built-ins working.
+  const vendorPropSearch = ref("");
+  const vendorPropFamily = ref<string | null>(null);
+
+  /** Vendor prop families, for the group filter. */
+  const vendorPropFamilies = computed(() => {
+    const set = new Set<string>();
+    for (const entry of VENDOR_PROP_CATALOG) {
+      // A prop can belong to several families ("Environment,Building"); take
+      // them all rather than arbitrarily picking the first.
+      for (const part of entry.family.split(",")) {
+        const name = part.trim();
+        if (name) set.add(name);
+      }
+    }
+    return [...set].sort();
+  });
+
+  const visibleVendorProps = computed(() => {
+    const needle = vendorPropSearch.value.trim().toLowerCase();
+    return VENDOR_PROP_CATALOG.filter((entry) => {
+      if (
+        vendorPropFamily.value &&
+        !entry.family.split(",").some((f) => f.trim() === vendorPropFamily.value)
+      ) {
+        return false;
+      }
+      if (!needle) return true;
+      return (
+        entry.name.toLowerCase().includes(needle) ||
+        entry.tags.some((t) => t.toLowerCase().includes(needle))
+      );
+    });
+  });
+
+  /** Thumbnail for a vendor prop, or null when the scrape missed it. */
+  function vendorPropThumb(entry: VendorPropEntry): string | null {
+    if (!entry.hasThumb) return null;
+    return `${VENDOR_PROP_THUMB_BASE}/${entry.slug}.png`;
+  }
+
+  /**
+   * Load and place a vendor prop.
+   *
+   * FBXLoader is dynamically imported inside the loader, so the picker stays
+   * cheap until one of these is actually clicked.
+   */
+  async function addVendorProp(entry: VendorPropEntry): Promise<void> {
+    const vp = viewport.value;
+    if (!vp) return;
+    propError.value = null;
+    try {
+      const { loadModelFromURL } = await import("../models/ModelLoader");
+      const loaded = await loadModelFromURL(`${VENDOR_PROP_BASE}/${entry.file}`, {
+        renderer: vp.renderer,
+      });
+      const root = loaded.root;
+      // Fan new props out so several do not stack inside one another.
+      root.position.x = props.value.length * 0.9;
+      centreOnOrigin(root);
+      snapToFloor(root);
+      vp.scene.add(root);
+
+      const placed: PlacedProp = {
+        id: `${entry.id}_${props.value.length}`,
+        config: {
+          id: entry.id,
+          name: entry.name.trim(),
+          family: entry.family.split(",")[0].trim() || "vendor",
+          tags: entry.tags,
+          size: [1, 1, 1],
+          procedural: undefined,
+          path: `${VENDOR_PROP_BASE}/${entry.file}`,
+        },
+        root,
+      };
+      props.value = [...props.value, placed];
+      selectedPropId.value = placed.id;
+      commit();
+    } catch (err) {
+      propError.value = err instanceof Error ? err.message : String(err);
+    }
+  }
   function removeProp(id: string): void {
     const vp = viewport.value;
     const placed = props.value.find((p) => p.id === id);
@@ -1745,6 +1926,50 @@ export function usePosing() {
   }
 
   /** Every loadable scene, authored first so curated setups lead the list. */
+  // Vendor scenes: the creator-approved scrape. Listed separately from the
+  // premade and generated scenes because each row costs a fetch, and a broken
+  // one must not take the other 500-odd rows with it.
+  const vendorSceneIndex = shallowRef<readonly VendorSceneSummary[]>([]);
+  const vendorSceneError = ref<string | null>(null);
+
+  async function loadVendorSceneLibrary(): Promise<void> {
+    try {
+      vendorSceneIndex.value = await loadVendorSceneIndex();
+      vendorSceneError.value = null;
+    } catch (err) {
+      vendorSceneError.value = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const vendorSceneTags = computed(() =>
+    vendorSceneCategories(vendorSceneIndex.value),
+  );
+
+  const visibleVendorScenes = computed(() =>
+    searchVendorScenes(vendorSceneIndex.value, poseSearch.value),
+  );
+
+  /** Fetch one vendor scene and load it into the viewport. */
+  async function applyVendorScene(summary: VendorSceneSummary): Promise<void> {
+    sceneError.value = null;
+    try {
+      const { scene, skipped } = await loadVendorScene(summary.file, summary.name);
+      await applyScene(scene);
+      history.initial(captureScene());
+      canUndo.value = false;
+      canRedo.value = false;
+      // Report rather than silently drop: a scene that loaded with a missing
+      // prop looks like a bug in the app rather than in the source asset.
+      if (skipped.length > 0) {
+        sceneError.value =
+          `Loaded with ${skipped.length} unsupported item(s): ` +
+          skipped.slice(0, 2).join(", ") +
+          (skipped.length > 2 ? ", ..." : "");
+      }
+    } catch (err) {
+      sceneError.value = err instanceof Error ? err.message : String(err);
+    }
+  }
   const allPremadeScenes = computed<readonly SceneState[]>(() => [
     ...PREMADE_SCENES,
     ...generatedSceneList.value,
@@ -2085,6 +2310,13 @@ export function usePosing() {
     poseError,
     poseLibraryError,
     generatedPoseCount,
+    loadVendorPoseLibrary,
+    vendorPoseIndex,
+    vendorPoseError,
+    vendorPoseTags,
+    visibleVendorPoses,
+    applyVendorPose,
+    vendorThumb,
     loadGeneratedLibrary,
     poseThumbs,
     allPoseTags,
@@ -2114,6 +2346,12 @@ export function usePosing() {
     propError,
     imagePlanes,
     addProp,
+    vendorPropSearch,
+    vendorPropFamily,
+    vendorPropFamilies,
+    visibleVendorProps,
+    vendorPropThumb,
+    addVendorProp,
     addPropFromFile,
     removeProp,
     dropPropToFloor,
@@ -2132,6 +2370,12 @@ export function usePosing() {
     undo,
     redo,
     allPremadeScenes,
+    loadVendorSceneLibrary,
+    vendorSceneIndex,
+    vendorSceneError,
+    vendorSceneTags,
+    visibleVendorScenes,
+    applyVendorScene,
     loadGeneratedSceneLibrary,
     sceneLibraryError,
     loadPremadeScene,
@@ -2162,6 +2406,10 @@ export function usePosing() {
     replayTour,
   };
 }
+
+
+
+
 
 
 

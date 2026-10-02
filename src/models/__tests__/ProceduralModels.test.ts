@@ -85,13 +85,34 @@ describe("buildProceduralModel", () => {
     }
   });
 
-  it("binds with a detached skeleton, so moving the root does not collapse it", () => {
+  it("binds in attached mode, so a post-bind root move applies once", () => {
+    // Detached freezes the bind matrix, so a transform applied after binding -
+    // and attachModel fans models out along X - is applied twice. Attached
+    // recomputes it each frame, which is correct because the vertex data is
+    // authored in the same space as the bone rest transforms.
     const root = buildProceduralModel(PROCEDURAL_CATALOG[0]);
     let mesh: THREE.SkinnedMesh | null = null;
     root.traverse((child) => {
       if ((child as THREE.SkinnedMesh).isSkinnedMesh) mesh = child as THREE.SkinnedMesh;
     });
-    expect((mesh as unknown as THREE.SkinnedMesh).bindMode).toBe("detached");
+    const skinned = mesh as unknown as THREE.SkinnedMesh;
+    expect(skinned.bindMode).toBe("attached");
+
+    // The move attachModel performs must not disturb the geometry.
+    const measure = (): number => {
+      root.updateMatrixWorld(true);
+      const box = new THREE.Box3();
+      const v = new THREE.Vector3();
+      const count = skinned.geometry.getAttribute("position").count;
+      for (let i = 0; i < count; i += 1) {
+        skinned.getVertexPosition(i, v);
+        box.expandByPoint(skinned.localToWorld(v));
+      }
+      return box.getSize(new THREE.Vector3()).length();
+    };
+    const before = measure();
+    root.position.x = 1.1;
+    expect(measure()).toBeCloseTo(before, 5);
   });
 
   it("varies height between figures", () => {
@@ -191,6 +212,7 @@ describe("buildProceduralModel", () => {
     expect(verts).toBeGreaterThan(100);
   });
 });
+
 
 
 
