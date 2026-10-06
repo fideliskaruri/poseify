@@ -43,9 +43,10 @@ npm run dev
 
 Open the URL Vite prints, usually <http://localhost:5173>.
 
-By default, `npm install` runs a postinstall hook that can fetch optional
-figure, pose, prop and scene assets into `public/vendor/` (gitignored). Use
-`npm ci --ignore-scripts` for a code-only checkout.
+Use `--ignore-scripts`. The repository still carries an install hook and
+loaders for third-party model, pose, prop and scene files that are not part of
+this project and not covered by its licence. They are scheduled for removal
+(see [Known gaps](#known-gaps)).
 
 | Command | Purpose |
 |---|---|
@@ -55,9 +56,6 @@ figure, pose, prop and scene assets into `public/vendor/` (gitignored). Use
 | `npm test` | Run the test suite |
 | `npm run typecheck` | Type check only |
 | `npm run clips:build` | Download and convert the CMU mocap clips |
-| `npm run models:fetch` | Fetch optional figure FBX files from the project CDN |
-| `npm run models:verify` | Verify downloaded FBX files against the rig contract |
-| `npm run setup` | Run the same asset setup as postinstall |
 | `npm run poses:generate` | Rebuild the generated pose library |
 | `npm run scenes:generate` | Rebuild the generated scene library |
 | `npm run demo:build` | Build the static demo page (also run by `build`) |
@@ -92,9 +90,11 @@ tools/         Clip building, pose generation, demo page
 
 ## Known gaps
 
-- **No figure is committed in-repo.** Optional figures land under
-  `public/vendor/` after install or `npm run models:fetch`. A small bundled
-  default figure may be added later.
+- **No bundled figure yet.** A CC0 rigged humanoid is planned so a fresh clone
+  has a figure to pose.
+- **Third-party leftovers.** The install hook, the `Vendor*` loaders and
+  catalogues, and `research/raw/` predate this fork's licence clean-up. They are
+  not part of Poseify and will be removed in a follow-up change.
 - Known engine bugs and the work backlog are tracked in `STATUS.md`.
 
 ## Licence

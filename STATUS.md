@@ -59,8 +59,10 @@ Treat earlier "verified" claims in git history as unconfirmed until they are
 checked again with a headless browser and recorded with screenshots and
 numbers.
 
-## Assets
+## Licence clean-up
 
-Optional figures, poses, props and scenes are fetched into `public/vendor/` by
-the install hook and related tools. See `ATTRIBUTION.md`. Use
-`npm ci --ignore-scripts` for a code-only checkout.
+The documentation no longer describes Poseify as a copy of, or a host for,
+another product's content. Some leftover files and code still need removing:
+the install hook, the `Vendor*` loaders and catalogues, `research/raw/` and
+`research/model-catalog.csv`. See `ATTRIBUTION.md`. Install with
+`npm ci --ignore-scripts` until then.

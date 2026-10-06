@@ -1,6 +1,9 @@
-// Load a premade scene from the project CDN and convert it into Poseify's own
-// scene format. Scene files under /vendor/pose-my-art/scenes/ are gitignored
-// and fetched by the asset tools. See ATTRIBUTION.md.
+// Load a scraped PoseMy.Art premade scene and convert it into Poseify's own
+// scene format.
+//
+// ASSET PROVENANCE: the scene files under /vendor/pose-my-art/scenes/ are
+// PoseMy.Art's own content -- NOT MIT, NOT CC0, all rights reserved. They are
+// gitignored and fetched by tools/scrape-assets.ts. See ATTRIBUTION.md.
 //
 // The two formats have nothing in common, so this is a real translation rather
 // than a field copy:

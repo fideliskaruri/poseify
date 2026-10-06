@@ -2,8 +2,8 @@
 
 ## Poseify
 
-The Poseify source code is MIT licensed. Content authored in this repository
-is also MIT:
+The Poseify source code is MIT licensed. So is the content authored in this
+repository:
 
 - the pose library in `src/pose/` (hand-made and generated poses)
 - the hand-pose library in `src/pose/HandPoseLibrary.ts`
@@ -32,19 +32,22 @@ states its motions are free for all uses. The ASF/AMC source files are not
 redistributed: `npm run clips:build` downloads and converts them locally into
 `public/vendor/mocap/`, which is gitignored.
 
-## Figures, poses, props and scenes from the project CDN
-
-Optional model, pose, prop and scene files are fetched by the install hook and
-related tools into `public/vendor/` (gitignored). Paths under
-`public/vendor/pose-my-art/` and the CDN host used by `tools/fetch-models.ts`
-are part of this project's asset pipeline. They are not third-party product
-inventory and are not documented here as someone else's catalogue.
-
-Install with `npm ci --ignore-scripts` if you want a code-only checkout without
-downloading those assets.
-
 ## Rig convention
 
 The skeleton contract in `src/rig/RigContract.ts` uses the Mixamo/Maya humanoid
 bone naming convention (`Hips`, `Spine`, `LeftForeArm`, `LeftHandIndex1`, ...).
 That is a naming convention, not an asset.
+
+## Files that are not part of Poseify
+
+Some files left over from before this fork's licence clean-up are not covered by
+the MIT licence and are not licensed for redistribution by this project:
+
+- `research/raw/`
+- `research/model-catalog.csv`
+- `src/props/VendorPropCatalog.ts`
+- anything an install hook or the `Vendor*` loaders download into
+  `public/vendor/` (other than the mocap clips above)
+
+They are scheduled for removal. Install with `npm ci --ignore-scripts` to skip
+the download.

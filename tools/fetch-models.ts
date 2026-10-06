@@ -1,11 +1,12 @@
-// Download every reachable model FBX from the project CDN.
+// Download every reachable PoseMy.Art model FBX from their public CDN.
 //
-// Files are kept under public/vendor/pose-my-art/ (gitignored). See
-// ATTRIBUTION.md.
+// These files are PoseMy.Art's own assets, not CC0. They are kept under
+// public/vendor/pose-my-art/ so they are obvious, separable, and easy to
+// replace with clean assets later. Do not relicense them as MIT.
 //
-// The source of truth for what to fetch is research/model-catalog.csv. Every
-// distinct .fbx filename in that CSV is attempted and, if the CDN answers 200,
-// saved.
+// The source of truth for what to fetch is research/model-catalog.csv, which
+// mirrors the catalogue baked into the PoseMy.Art web app. Every distinct
+// .fbx filename in that CSV is attempted and, if the CDN answers 200, saved.
 //
 // WHY THIS IS NOT SIMPLY A LOOP OF FETCHES
 //

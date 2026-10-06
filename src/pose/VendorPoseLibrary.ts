@@ -1,6 +1,10 @@
-// Optional pose library from the project CDN: rotations plus reference
-// thumbnails under public/vendor/pose-my-art/ (gitignored), fetched by the
-// asset tools. See ATTRIBUTION.md.
+// The scraped PoseMy.Art pose library: 5,170 real, professionally authored
+// poses with the vendor's own reference thumbnails.
+//
+// ASSET PROVENANCE: the pose rotations, names, categories, descriptions and
+// thumbnails are all PoseMy.Art's own content. NOT MIT, NOT CC0, all rights
+// reserved. They live under public/vendor/pose-my-art/ which is gitignored and
+// fetched by tools/scrape-poses.ts. See ATTRIBUTION.md.
 //
 // WHY THIS IS LAZY
 //
@@ -9,8 +13,10 @@
 // search and filtering work with no pose data resident), and fetches the
 // ~8 KB rotation file for a pose only when the artist clicks it.
 //
-// The thumbnails need no rendering at all: each pose has a real reference
-// image, so the picker shows that artwork rather than a re-render of our rig.
+// The thumbnails need no rendering at all: the vendor shipped a real
+// reference image per pose, so the picker shows their actual artwork rather
+// than a re-render of our rig. That is both cheaper and more honest, since it
+// shows the pose as it was authored.
 //
 // BONE NAMES
 //
