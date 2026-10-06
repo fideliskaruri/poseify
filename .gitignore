@@ -10,14 +10,13 @@ tools/cache/
 # CMU mocap source files (hundreds of MB, refetched by `npm run clips:build`).
 tools/cache/cmu/
 
-# Vendor model FBXs are PoseMy.Art's property, not ours (see ATTRIBUTION.md).
-# They are fetched by tools/fetch-models.ts and must never be committed.
+# Downloaded third-party files. Not part of Poseify and must never be committed
+# (see ATTRIBUTION.md). The CMU mocap clips built by `npm run clips:build` also
+# land here.
 public/vendor/
 
 # Local dev-server log, written by `npm run dev`.
 dev.log
 
-# Asset catalogues extracted from the PoseMy.Art bundle. These embed their scene
-# names, categories and descriptions, so they carry the same all-rights-reserved
-# terms as the assets themselves and must never be committed. See ATTRIBUTION.md.
+# Extracted third-party catalogues. Must never be committed.
 research/extracted/

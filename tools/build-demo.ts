@@ -1,8 +1,5 @@
-// Build the demo page.
-//
-// PoseMy.Art's 563 category pages are its organic acquisition channel. This is
-// Poseify's answer: one static page that renders real poses from the library at
-// build time, with no server, no runtime cost and no per-pose page.
+// Build the demo page: one static page that renders real poses from the
+// library at build time, with no server, no runtime cost and no per-pose page.
 //
 // The figures are drawn with a real forward-kinematics walk over the rig
 // contract's rest pose, so a raised arm reads as a raised arm. Reading joint
@@ -16,7 +13,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as THREE from "three";
 import { POSE_LIBRARY, findPoseById } from "../src/pose/PoseLibrary";
-import { MODEL_CATALOG } from "../src/models/ModelCatalog";
 import { FULL_PARENTS } from "../src/rig/RigContract";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -271,7 +267,6 @@ function build() {
     "Works offline",
     "No telemetry",
     POSE_LIBRARY.length + " authored poses + 1,200 generated",
-    MODEL_CATALOG.length + " models",
     "268 scenes",
   ].map(function (b) { return "    <li>" + escapeHtml(b) + "</li>"; }).join("\n");
 
@@ -305,9 +300,8 @@ function build() {
     '  <p><a class="cta" href="../">Open Poseify</a></p>',
     "  <footer>",
     "    Figures drawn with the app's own rig contract and forward kinematics.",
-    "    Independent reimplementation, not affiliated with PoseMy.Art. See",
-    "    <code>ATTRIBUTION.md</code> for asset provenance, which matters if you fork",
-    "    this: the model files are PoseMy.Art's property and are not MIT.",
+    "    Poseify is MIT licensed. See <code>ATTRIBUTION.md</code> for third-party",
+    "    software and data.",
     "  </footer>",
     "</main>",
     "</body>",
