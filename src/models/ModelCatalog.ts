@@ -1,11 +1,10 @@
 // The shipped model catalogue.
 //
-// Every entry is a real FBX scraped from the PoseMy.Art CDN by
-// tools/fetch-models.ts and served out of /public/vendor/pose-my-art/. See
-// ATTRIBUTION.md for provenance: these are vendor assets, not CC0.
+// Entries are FBX files fetched by tools/fetch-models.ts from the project CDN
+// and served from /public/vendor/pose-my-art/. See ATTRIBUTION.md.
 //
-// There are no procedurally generated models. Anything that needed a builder
-// at runtime was removed; if a model is in the picker, it is a file on disk.
+// There are no procedurally generated models. If a model is in the picker, it
+// is a file on disk (or available after fetch).
 
 import { DEFAULT_LOAD_CONFIG, type ModelLoadConfig } from "./ModelLoadConfig";
 import { VENDOR_CATALOG, type VendorEntry } from "./VendorCatalog";

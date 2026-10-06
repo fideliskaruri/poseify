@@ -1,18 +1,15 @@
-// Catalogue of the real PoseMy.Art FBX models.
+// Catalogue of FBX figures served from the project CDN.
 //
-// ASSET PROVENANCE: these FBX files belong to PoseMy.Art and are NOT CC0 or
-// MIT. They live under /public/vendor/pose-my-art/ and are fetched by
-// tools/fetch-models.ts, which probes every distinct .fbx named in
-// research/model-catalog.csv and saves the ones the CDN actually serves. Keep
-// them isolated so they can be swapped for cleanly-licensed models later
-// without touching application code. See ATTRIBUTION.md.
+// Files live under /public/vendor/pose-my-art/ and are fetched by
+// tools/fetch-models.ts from the project CDN, using names listed in
+// research/model-catalog.csv. See ATTRIBUTION.md.
 //
-// The list below is exactly the set that fetch recorded as downloaded. When
-// you re-run `npm run models:fetch`, cross-check it against
+// The list below is the set fetch recorded as downloaded. When you re-run
+// `npm run models:fetch`, cross-check it against
 // public/vendor/pose-my-art/catalog-report.json and add any newly reachable
 // file here.
 //
-// Bone names in these files use the Mixamo convention behind a namespace
+// Bone names use the Mixamo convention behind a namespace
 // (mixamorigRightUpLeg / mixamorig1Hips), which src/rig/Retargeter.ts maps back
 // onto the rig contract.
 

@@ -1,9 +1,7 @@
 // Combinatorial pose generator.
 //
-// Phase 7 of the parity work. PoseMy.Art's moat is content, not software:
-// 6300+ poses against Poseify's 98. The reason that gap is tractable here is
-// that Poseify's poses are *authored degrees* - readable joint instructions,
-// not opaque quaternions - so they are machine-expandable.
+// Poseify's hand-authored poses are *authored degrees* - readable joint
+// instructions, not opaque quaternions - so they are machine-expandable.
 //
 // The axes are the ones an artist actually thinks in: what the body is doing,
 // which way it faces, where the arms are, where the weight is, how the spine

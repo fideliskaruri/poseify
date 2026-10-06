@@ -4,9 +4,9 @@
 // Runs in Node against the raw files so a bad download or an unexpected bone
 // naming scheme is caught before the browser ever sees it.
 //
-// IMPORTANT: not every scraped model is a humanoid. The catalogue deliberately
-// includes creatures (mermaids, werewolf) and an animal (horse), and those are
-// NOT expected to resolve the 20-bone contract -- a horse has no
+// IMPORTANT: not every catalogue model is a humanoid. The catalogue
+// deliberately includes creatures (mermaids, werewolf) and an animal (horse),
+// and those are not expected to resolve the 20-bone contract -- a horse has no
 // LeftShoulder. Treating that as a failure would make this tool useless, so
 // known non-humanoid files are reported as NOT-HUMAN and do not fail the run.
 // What this script actually guards against is a corrupted download, an
