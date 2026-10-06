@@ -123,7 +123,7 @@ function normalise(name: string): string {
 
 // Namespaces used by Mixamo / Blender FBX exports, stripped before fuzzy match.
 //
-// Real observed forms from the PoseMy.Art model set:
+// Real observed forms from the a typical pose reference tool model set:
 //   mixamorig1Hips        Blender glues the armature name on with no separator
 //   mixamorigRightUpLeg   same, with no numeric suffix
 //   mixamorig:Hips        colon-separated

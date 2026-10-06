@@ -5,7 +5,7 @@
 // That works for posing but it cannot express "attach this prop to that joint"
 // — the user needs to see which joint they are about to choose.
 //
-// PoseMy.Art solves this by rendering a sphere on every joint and blinking them
+// a typical pose reference tool solves this by rendering a sphere on every joint and blinking them
 // while attach mode is live. Same idea here, minus the blink: a real click
 // target per bone, sized from the model's own gizmo tuning so a chibi and a
 // brute both get handles you can actually hit.

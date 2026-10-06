@@ -1,15 +1,17 @@
 ---
 date: 2026-10-02
-author: iamtyroon
-status: master prompt, hand this to the next model
+status: engine backlog, hand this to the next model
 ---
 
 # Poseify — Master Prompt V3
 
-You are fixing **Poseify**, a free open-source browser-based 3D pose reference
-tool at `C:\Users\Tyroon\Desktop\projects-backup\posify`. It is a PoseMy.Art
-equivalent: Vue 3 + Vite + TypeScript + Three.js, free forever, no account, no
-network requirement, no telemetry.
+You are fixing **Poseify**, a free, MIT-licensed, browser-based 3D pose
+reference tool: Vue 3 + Vite + TypeScript + Three.js, free forever, no account,
+no network requirement, no telemetry.
+
+Scope is engine and UI work only. Do not fetch, copy or ship content from any
+other pose tool, including models, poses, scenes, thumbnails or code from
+another product's shipped bundle.
 
 The previous build is **functionally complete on paper and visibly broken in
 practice**. Its own `STATUS.md` claims nine phases PASS. The app in the browser
@@ -27,11 +29,8 @@ order given. Section 1 is a blocker: nothing else is visible until it is fixed.
   and a `renderer.info.render.triangles` number that is not 2.
 - **Never trust `STATUS.md`.** It is aspirational. Correct it as you go, or
   delete the rows that turn out to be false.
-- **Every commit is authored by the repo owner, `iamtyroon`.** Do not add
-  yourself, Codex, Claude, GPT, Copilot, "AI assistant", or any tool name to
-  commit authorship, trailers, or `Co-Authored-By`. `git log --format='%an %ae'`
-  must show only `iamtyroon` on every commit you create. Check this before you
-  push, every time.
+- Do not add any tool or assistant name to commit trailers or
+  `Co-Authored-By`.
 - Do not add new runtime dependencies without a stated reason. Three.js already
   ships everything needed below.
 - Do not "simplify" the two-gizmo design. See section 3.3 — it is deliberate.
@@ -77,7 +76,7 @@ These were all measured and are healthy. Do not "fix" them.
 
 | Thing | Measured value | Verdict |
 |---|---|---|
-| FBX file exists | `public/vendor/pose-my-art/realistic_muscular_male_OP_IK.fbx`, 4840 KB | fine |
+| Test figure file | rigged humanoid FBX, 4840 KB | fine |
 | Load time | 579 ms | fine |
 | Loaded bounding box | `1.752 x 1.750 x 0.326` m | correct, human-sized |
 | Root position / scale | `[0,0,0]` / `1.0000` | fine |
@@ -131,46 +130,18 @@ against a live render before you trust it.
 
 ---
 
-## 2. Generated poses must be deleted, not fixed
+## 2. Pose application must actually work
 
-### The complaint
-
-Many poses in the library are bad — limbs at wrong angles, figures floating,
-feet through the floor, anatomically impossible stances. Do not tune them.
-**Delete the whole generated library.**
-
-### What to do
-
-- Remove every procedurally generated pose. `src/pose/GeneratedPoseLibrary.ts`
-  and whatever `tools/build-pose-library.ts` produces.
-- Remove the generated pose assets and the build step that regenerates them.
-  Remove the `poses:generate` npm script.
-- **The only poses that ship are the ones scraped from the PoseMy.Art CDN**,
-  which is `posemyart3.nyc3.cdn.digitaloceanspaces.com`.
-- Read `research/model-catalog.csv` and `research/raw/app.js` for the exact
-  CDN paths. The naming convention is
-  `/extracted_poses_imgs/{poseId}_{frameIndex}_thumbnail.png`.
-- Keep the hand-pose library (`src/pose/HandPoseLibrary.ts`, 9 poses x 2 sides)
-  — those are authored in-repo and are fine.
-- Update `ATTRIBUTION.md`. The scraped poses are vendor content behind
-  PoseMy.Art's paywall and are not MIT. State that plainly, the same way the
-  model FBX provenance is already stated.
-- Update `STATUS.md`: the pose count is no longer 1,298 and no longer 98. It is
-  whatever the CDN scrape yields. Say the real number.
-
-### Pose application must actually work
-
-Independently of *which* poses ship, the act of applying a pose is broken or
-unverified. Fix and prove this:
+Applying a pose is broken or unverified. Fix and prove this:
 
 - Clicking a pose applies it **to the correct bone names**. The rig contract is
-  the Mixamo/Maya skeleton; see section 6.
+  the Mixamo/Maya skeleton in `src/rig/RigContract.ts`.
 - The figure visibly changes in the viewport. Verify with a screenshot, not by
   asserting on a quaternion.
-- A pose applied to any of the 33 models does not throw, does not silently
+- A pose applied to any available figure does not throw, does not silently
   no-op, and does not leave the figure half-posed.
-- Poses carry the same `rootOffset` concept PoseMy.Art uses so a seated pose
-  sits on the floor. There is an `In place` toggle already; make sure it works.
+- Poses carry a `rootOffset` so a seated pose sits on the floor. There is an
+  `In place` toggle already; make sure it works.
 
 ---
 
@@ -178,9 +149,9 @@ unverified. Fix and prove this:
 
 ### The complaint
 
-This is the feature in the screenshot the owner was given: PoseMy.Art draws a
-coloured **sphere on every joint**. You click one and get a rotation gizmo with
-the three rings. Poseify has *none of that* — bone picking is invisible.
+The owner wants a coloured **sphere on every joint**: click one and get a
+rotation gizmo with the three rings. Poseify has *none of that*; bone picking is
+invisible.
 
 ### Current state, verified
 
@@ -209,13 +180,12 @@ raycast works; there is simply no visual affordance and no ring gizmo.
    Three.js has `TransformControls` in `rotate` mode, and `three/examples/jsm`
    also ships gizmo primitives you can assemble. Build a dedicated joint gizmo
    rather than reusing the object gizmo — see section 3.3.
-4. **Translate handles too**, matching PoseMy.Art: the joint handles should be
+4. **Translate handles too**: the joint handles should be
    draggable, not only rotatable. Anything you can do in a 3D space, visually.
-5. Handle colour by chain so the figure reads at a glance, roughly like
-   PoseMy.Art's screenshot: spine green, limbs red/blue by side, hands
-   finger-coloured. Exact palette is your call, but chain grouping must be
-   legible.
-6. Add a **handles toggle**. PoseMy.Art has one; Poseify's owner asked for it.
+5. Handle colour by chain so the figure reads at a glance: spine green, limbs
+   red/blue by side, hands finger-coloured. Exact palette is your call, but
+   chain grouping must be legible.
+6. Add a **handles toggle**. The owner asked for it.
 7. Joint handles must not intercept an orbit drag or fight the gizmo for the
    pointer. Stub `mesh.raycast` and pick in JS from bone positions.
 
@@ -239,21 +209,10 @@ lengths. Keep them separate.
 
 ### 3.4 Attach prop to joint
 
-PoseMy.Art's `attachDetachProp` lets you pin a prop to a bone so it follows the
-figure. From their shipped bundle:
-
-    attachDetachProp(e) {
-      e.propAttachInfo ? sceneManager.detachProp(e)
-                       : (propToAttach = e, startAttachPropMode())
-    }
-    startAttachPropMode() {
-      hideTransformControls()
-      blinkMaterialUniforms.isSphereBlinking.value = 1
-      blinkMaterialUniforms.isModelBlinking.value = 1
-    }
+Let the user pin a prop to a bone so it follows the figure.
 
 Select a prop, press Attach, joint spheres blink, click a joint, the prop is
-parented to that bone. `propAttachInfo` stores the bone and an offset.
+parented to that bone. The attachment stores the bone and an offset.
 
 The existing `PlacedProp.attach` / `PropAttach` shape in the working tree is a
 reasonable model for this and survives save/load. Verify it properly or replace
@@ -335,16 +294,13 @@ Escape or the X always closes.
 
 ### The complaint
 
-PoseMy.Art does not look like a flat dark viewport. The figure pops — it reads
-as a clean, well-lit sculpt. Poseify looks flat and muddy by comparison.
+The figure should pop and read as a clean, well-lit sculpt. Poseify looks flat
+and muddy today.
 
 ### What to do
 
-- Inspect how PoseMy.Art's bundle shades its models. `research/raw/app.js` is
-  their shipped 1.2 MB bundle and is already in the repo; `research/FINDINGS.md`
-  documents their stack.
-- Their base material is `MeshPhongMaterial` with a light grey base colour
-  (`#cccccc`), which is what the FBX files already carry.
+- A light grey `MeshPhongMaterial` base (`#cccccc`) is a reasonable neutral
+  starting point.
 - Improve the **environment**, not just the material: stronger key light,
   softer fill, a subtle rim, and a tone-mapping change if it helps. The current
   `HemisphereLight` intensity and the `DirectionalLight` defaults are the first
@@ -359,70 +315,21 @@ as a clean, well-lit sculpt. Poseify looks flat and muddy by comparison.
 
 ---
 
-## 6. Scrape the CDN for free pre-made scenes
+## 6. The status file is not trustworthy
 
-### The request
+Earlier `PASS` claims were verified against a dead render loop. Treat every
+browser claim in `STATUS.md` and in git history as unproven.
 
-There are free pre-made scenes on the PoseMy.Art CDN. Scrape them and ship them,
-replacing the generated scene library.
-
-### What to do
-
-- Host is `posemyart3.nyc3.cdn.digitaloceanspaces.com`. Only free content.
-  `isPremium` flags are in `research/model-catalog.csv` and in the shipped
-  bundle's lang/data tables — filter on them and do not ship premium entries.
-- Scene thumbnails already follow
-  `/extracted_poses_imgs/{poseId}_{frameIndex}_thumbnail.png`. Find the
-  equivalent path for scenes.
-- `src/scene/GeneratedScenes.ts` and `tools/build-scene-library.ts` are the
-  generated path to delete, along with the `scenes:generate` npm script.
-- Persist the scrape as a checked-in index (JSON/CSV) plus a fetch script, the
-  way the models already work, so the build is reproducible and the data is
-  reviewable. Keep the vendor assets gitignored if that is the current
-  arrangement — do not change the licence posture without saying so.
-- Every scraped scene must be **loadable and visible**. A scene that loads but
-  renders nothing is the section 1 bug again, wearing a different hat. Verify by
-  screenshot.
-- Update `ATTRIBUTION.md` and `STATUS.md` with the real counts.
-
----
-
-## 7. The parity tracker is not trustworthy
-
-`research/PARITY.md` and `STATUS.md` are full of `PASS` rows that were verified
-against a dead render loop. Treat every browser claim in them as unproven.
-
-- Re-verify row by row against a live renderer.
-- Change each row to reflect what you actually observed, including `FAIL` and
+- Re-verify each feature against a live renderer.
+- Record what you actually observed in `STATUS.md`, including `FAIL` and
   `unverified`.
 - Keep the honest state visible. A tracker that says PASS while the canvas is
   empty is worse than no tracker.
+- Shortcuts: Poseify uses `Shift+R` for rotate and `Shift+H` for hide because
+  bare `R` and `H` are taken by reset-pose and frame-scene. Decide
+  deliberately whether to remap them and document the choice.
 
-For reference, the parity research at
-`research/PARITY-LIVE-2026-10-02.md` measured PoseMy.Art directly (live
-accessibility tree plus static analysis of their bundle) and is sound. Its
-measured shortcut table is:
-
-| Key | PoseMy.Art |
-|---|---|
-| `G` / `R` / `S` | Move / Rotate / Scale |
-| `F` / `X` | Flip model, switch pose sides |
-| `H` | Hide / show |
-| `D` / `Del` | Delete |
-| `Shift+D` | Duplicate |
-| `Esc` | Deselect |
-| `Ctrl/Cmd+Z` | Undo |
-| `Ctrl/Cmd+Shift+Z` or `Ctrl/Cmd+Y` | Redo |
-
-Poseify currently uses `Shift+R` for rotate and `Shift+H` for hide because bare
-`R` and `H` were taken by reset-pose and frame-scene. Poseify also has `L` for
-lock, which PoseMy.Art has no binding for. Decide deliberately and document the
-choice; `Shift+R` silently doing something else is a real papercut for anyone
-moving over from PoseMy.Art.
-
----
-
-## 8. Definition of done
+## 7. Definition of done
 
 Do not claim any of this is finished until all of it is true and you have the
 evidence:
@@ -430,10 +337,8 @@ evidence:
 - [ ] `renderer.info.render.frame` advances continuously; a loaded model renders
       tens of thousands of triangles; a screenshot shows the figure.
 - [ ] One throwing `onFrame` callback cannot kill the render loop. Tested.
-- [ ] No generated poses ship. CDN-scraped poses only. Counts in `STATUS.md`
-      are real.
-- [ ] Clicking a pose visibly changes the figure, on every model, verified by
-      screenshot.
+- [ ] Clicking a pose visibly changes the figure, on every available figure,
+      verified by screenshot.
 - [ ] Every joint has a visible, clickable handle, sized per model.
 - [ ] Selecting a joint shows Blender-style rotation rings; handles drag to
       translate.
@@ -442,27 +347,17 @@ evidence:
 - [ ] Pose list is virtualised. No 2,978-node accessibility tree.
 - [ ] Ten load/delete cycles show no growth in `renderer.info.memory`.
 - [ ] Material/lighting preset ships and does not break any export pass.
-- [ ] Free pre-made scenes scraped from the CDN, loadable, visible, licence
-      position updated.
 - [ ] `npm run typecheck`, `npm test` and `npm run build` all pass.
-- [ ] `git log --format='%an %ae'` shows only `iamtyroon` on every commit.
 
-## 9. Where the evidence is
+## 8. Where the evidence is
 
 | Path | What it holds |
 |---|---|
-| `research/PARITY-LIVE-2026-10-02.md` | Measured PoseMy.Art parity, shortcuts, gaps |
-| `research/FINDINGS.md` | Reverse-engineering dossier: stack, rig contract, CDN paths |
-| `research/model-catalog.csv` | 85 models with bone names, bone sizes, premium flags |
-| `research/raw/app.js` | PoseMy.Art's shipped 1.2 MB bundle |
-| `research/raw/chunk-vendors.js` | Their vendor bundle |
-| `ATTRIBUTION.md` | Licence position for vendor assets |
-| `STATUS.md` | Build status — **unreliable, see section 7** |
-| `research/PARITY.md` | Feature tracker — **unreliable, see section 7** |
+| `STATUS.md` | Build status and known bugs; **re-verify, see section 6** |
+| `ATTRIBUTION.md` | Licence position for third-party software and data |
+## 9. A note on how this went before
 
-## 10. A note on how this went before
-
-The previous agent marked nine phases PASS and shipped a parity table, then
+The previous agent marked nine phases PASS and shipped a status table, then
 could not tell that the render loop had been dead the entire time. It also left
 an unverified feature in the tree that made the loop worse.
 

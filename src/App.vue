@@ -73,25 +73,6 @@ const {
   handPoseStatus,
   handPoseSearch,
   visibleHandPoses,
-  vendorSceneIndex,
-  vendorPoseIndex,
-  loadVendorPoseLibrary,
-  vendorPoseError,
-  vendorPoseTags,
-  visibleVendorPoses,
-  applyVendorPose,
-  vendorThumb,
-  vendorPropSearch,
-  vendorPropFamily,
-  vendorPropFamilies,
-  visibleVendorProps,
-  vendorPropThumb,
-  addVendorProp,
-  loadVendorSceneLibrary,
-  vendorSceneError,
-  vendorSceneTags,
-  visibleVendorScenes,
-  applyVendorScene,
   applyHandPose,
   copyHandPose,
   pasteHandOnly,
@@ -214,8 +195,6 @@ onMounted(() => {
   refreshSavedScenes();
   void loadGeneratedLibrary();
   void loadGeneratedSceneLibrary();
-  void loadVendorPoseLibrary();
-  void loadVendorSceneLibrary();
 });
 
 onMounted(() => {
@@ -287,7 +266,7 @@ const propGroups = computed(() => {
 
 // ---------------------------------------------------------------- overlays
 //
-// PoseMy.Art keeps no permanent panels: every tool opens a large surface over
+// a typical pose reference tool keeps no permanent panels: every tool opens a large surface over
 // the canvas. One overlay at a time matches that, and stops the previous
 // layout's real failure mode, where twelve stacked sections in a 216px column
 // meant Props and Animation were off-screen behind a scroll.
@@ -333,7 +312,7 @@ const objectColor = ref("#cccccc");
 
 watch(objectColor, (value) => setSelectedObjectColor(value));
 
-// Pose pagination. PoseMy.Art exposes rows-per-page and paging because its
+// Pose pagination. a typical pose reference tool exposes rows-per-page and paging because its
 // library is thousands of poses; ours grows past a thousand in the v2 run, so
 // the same control is needed to keep the picker usable.
 const posePageSize = ref(30);
@@ -389,36 +368,16 @@ function onSceneFile(event: Event): void {
 
 const premadeScenes = allPremadeScenes;
 
-// Reference library tab. The three vendor sources are listed in one panel with
-// a tab each, rather than as three separate sections: they are all "the big
-// library", and an artist browsing poses does not want to hunt for them.
-const libraryTab = ref<"poses" | "props" | "scenes">("poses");
-const librarySearch = ref("");
-
 // The overlay shell hides the two original side panels, but several sections
-// were never ported into an overlay pane: the reference library (5,170 poses,
-// 1,331 props, 5,543 scenes), hand poses, joint groups and anchors. They stay
-// in the markup, so the panel is toggled back into view rather than duplicating
-// all of it. Opening a model reveals the panel, because every one of those
-// sections is scoped to `activeModelId` and would otherwise show empty.
+// remain in the markup: authored poses, props, hand poses, joint groups and
+// anchors. The panel is toggled back into view rather than duplicating them.
+// Opening a model reveals it because these sections are scoped to `activeModelId`.
 const showRightPanel = ref(false);
 
 function toggleRightPanel(): void {
   showRightPanel.value = !showRightPanel.value;
 }
 
-const filteredVendorPoses = computed(() => {
-  const needle = librarySearch.value.trim().toLowerCase();
-  if (!needle) return visibleVendorPoses.value;
-  // The vendor search already honours poseSearch; this narrows further on the
-  // library box without having to re-fetch anything.
-  return visibleVendorPoses.value.filter(
-    (row) =>
-      row.name.toLowerCase().includes(needle) ||
-      row.category.toLowerCase().includes(needle) ||
-      row.description.toLowerCase().includes(needle),
-  );
-});
 const shortcutHelp = SHORTCUT_HELP;
 
 // Render thumbnails lazily: only the poses currently visible in the picker,
@@ -437,7 +396,7 @@ watch(
     <div ref="mount" class="viewport"></div>
 
     <!--
-      Icon rails over the canvas, matching PoseMy.Art's layout: no permanent
+      Icon rails over the canvas, matching a typical reference tool's layout: no permanent
       side panels, every tool is a round button that opens an overlay. The
       canvas stays clear, which is the whole point of the redesign.
     -->
@@ -490,7 +449,7 @@ watch(
       </button>
       <!--
         Groups and anchors are first-class menus here, not a section buried in
-        the right panel. PoseMy.Art gives both their own top-level menu button,
+        the right panel. a typical pose reference tool gives both their own top-level menu button,
         and the v2 audit found the working implementations were unreachable
         there: an artist would not find a feature they never see.
       -->
@@ -567,7 +526,7 @@ watch(
         <span aria-hidden="true">&#9881;</span>
       </button>
       <!--
-        Joint handles. PoseMy.Art exposes the same pair of booleans bottom-left
+        Joint handles. a typical pose reference tool exposes the same pair of booleans bottom-left
         (model/joint gizmo, light gizmo); this is the joint one, so an artist
         can see the joints they are about to pose or attach to.
       -->
@@ -597,7 +556,7 @@ watch(
 
     <!--
       Context toolbar. Only appears when a model is selected, and mirrors
-      PoseMy.Art's order so muscle memory transfers: transform first, then
+      a typical reference tool's order so muscle memory transfers: transform first, then
       pose editing, then object-level commands.
     -->
     <div
@@ -700,7 +659,7 @@ watch(
       </button>
 
       <!--
-        Attach to Joint, mirroring PoseMy.Art. Only meaningful for a prop, and
+        Attach to Joint, mirroring a typical pose reference tool. Only meaningful for a prop, and
         only with a figure loaded to attach it to, so it stays hidden otherwise
         rather than sitting there greyed out explaining nothing.
       -->
@@ -1077,7 +1036,7 @@ watch(
           </div>
         </div>
 
-        <!-- Export. PoseMy.Art offers one button per pass rather than a single
+        <!-- Export. a typical pose reference tool offers one button per pass rather than a single
              "export all", because an artist usually wants the regular image
              and only occasionally the depth or normal map. -->
         <div v-else-if="activeOverlay === 'export'" class="overlay-pane">
@@ -1899,121 +1858,6 @@ watch(
         </p>
       </section>
 
-      <section v-if="activeModelId" class="vendor-lib">
-        <h2>Reference library</h2>
-        <p class="hint">
-          {{ vendorPoseIndex.length.toLocaleString() }} reference poses,
-          {{ visibleVendorProps.length.toLocaleString() }} props and
-          {{ vendorSceneIndex.length.toLocaleString() }} scenes, fetched from the
-          local asset library on demand.
-        </p>
-        <p v-if="vendorPoseError" class="hint warn">
-          Reference poses unavailable: {{ vendorPoseError }}
-        </p>
-
-        <div class="row wrap">
-          <button
-            type="button"
-            class="chip"
-            :class="{ on: libraryTab === 'poses' }"
-            @click="libraryTab = 'poses'"
-          >
-            Poses
-          </button>
-          <button
-            type="button"
-            class="chip"
-            :class="{ on: libraryTab === 'props' }"
-            @click="libraryTab = 'props'"
-          >
-            Props
-          </button>
-          <button
-            type="button"
-            class="chip"
-            :class="{ on: libraryTab === 'scenes' }"
-            @click="libraryTab = 'scenes'"
-          >
-            Scenes
-          </button>
-        </div>
-
-        <label class="field">
-          <span>Search library</span>
-          <input v-model="librarySearch" type="search" placeholder="e.g. sword, dance, chair" />
-        </label>
-
-        <template v-if="libraryTab === 'poses'">
-          <p v-if="!vendorPoseIndex.length" class="hint">No reference poses loaded.</p>
-          <div v-else class="pose-grid vendor-grid">
-            <button
-              v-for="row in filteredVendorPoses"
-              :key="row.id"
-              type="button"
-              class="pose-tile"
-              :title="`${row.name} — ${row.category}`"
-              @click="applyVendorPose(row)"
-            >
-              <img
-                v-if="vendorThumb(row)"
-                :src="vendorThumb(row)!"
-                :alt="`${row.name} reference`"
-                loading="lazy"
-              />
-              <span v-else class="thumb placeholder" aria-hidden="true"></span>
-              <span class="pose-name">{{ row.name }}</span>
-            </button>
-          </div>
-          <p class="hint">
-            {{ filteredVendorPoses.length.toLocaleString() }} of
-            {{ vendorPoseIndex.length.toLocaleString() }} poses
-          </p>
-        </template>
-
-        <template v-else-if="libraryTab === 'props'">
-          <label class="field">
-            <span>Family</span>
-            <select v-model="vendorPropFamily">
-              <option :value="null">All families</option>
-              <option v-for="f in vendorPropFamilies" :key="f" :value="f">{{ f }}</option>
-            </select>
-          </label>
-          <div class="prop-grid vendor-grid">
-            <button
-              v-for="prop in visibleVendorProps"
-              :key="prop.id"
-              type="button"
-              class="prop-tile"
-              :title="prop.name"
-              @click="addVendorProp(prop)"
-            >
-              <img
-                v-if="vendorPropThumb(prop)"
-                :src="vendorPropThumb(prop)!"
-                :alt="`${prop.name} prop`"
-                loading="lazy"
-              />
-              <span v-else class="thumb placeholder" aria-hidden="true"></span>
-              <span class="pose-name">{{ prop.name.trim() }}</span>
-            </button>
-          </div>
-          <p class="hint">{{ visibleVendorProps.length.toLocaleString() }} props</p>
-        </template>
-
-        <template v-else>
-          <p v-if="vendorSceneError" class="hint warn">{{ vendorSceneError }}</p>
-          <p v-else-if="!vendorSceneIndex.length" class="hint">No reference scenes loaded.</p>
-          <ul v-else class="list vendor-list">
-            <li v-for="row in visibleVendorScenes" :key="row.id">
-              <button type="button" :title="row.description" @click="applyVendorScene(row)">
-                {{ row.name }}
-              </button>
-            </li>
-          </ul>
-          <p class="hint">{{ visibleVendorScenes.length.toLocaleString() }} scenes</p>
-        </template>
-      </section>
-
       <section v-if="activeModelId">
         <h2>Hand poses</h2>
         <p class="hint">
@@ -2516,10 +2360,7 @@ watch(
 
 .panel-right {
   right: 12px;
-  /* The reference library is the reason this panel still exists: it lists
-   * thousands of poses with thumbnails, which needs more room than the old
-   * 216px sidebar gave it. */
-  width: 360px;
+    width: 360px;
   max-width: calc(100vw - 24px);
 }
 
@@ -2605,25 +2446,6 @@ button.chip.wide {
   font-size: 11px;
 }
 
-.vendor-grid {
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.vendor-grid .pose-tile img,
-.vendor-grid .prop-tile img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: 5px;
-  background: #101319;
-}
-
-.vendor-list {
-  max-height: 320px;
-  overflow-y: auto;
-}
-
 .bone-tags {
   max-height: 120px;
   overflow-y: auto;
@@ -2697,11 +2519,11 @@ button.chip.tile.loading {
   opacity: 0.6;
 }
 
-/* ------------------------------------------------------- PoseMy.Art shell
+/* ------------------------------------------------------- app shell
  *
  * Round icon buttons on two rails, a contextual toolbar, and overlays over
  * the canvas. No permanent side panels: the 3D view is the app, the chrome
- * floats on it. 46px matches PoseMy.Art's button size so the muscle memory
+ * floats on it. 46px matches a typical reference tool's button size so the muscle memory
  * transfers.
  */
 .rail {
@@ -2931,10 +2753,8 @@ button.chip.tile.loading {
 
 /* The left panel is fully superseded by the rails and overlays, so it never
  * renders: two panels plus the new chrome was the layout problem the overlay
- * shell fixed. The right panel is different - the reference library, hand
- * poses, joint groups and anchors were never ported into an overlay pane, so
- * it stays and is toggled from the rail instead. Remove the aside elements
- * once those sections have been ported too.
+ * shell fixed. The right panel still holds authored poses, hand poses, joint
+ * groups and anchors, so it stays and is toggled from the rail instead.
  */
 .panel-left {
   display: none;
@@ -3613,7 +3433,6 @@ button.chip:disabled {
   background: #6fb4ff;
 }
 </style>
-
 
 
 

@@ -1,6 +1,6 @@
 // Hand poses: a payload separate from the body pose.
 //
-// PoseMy.Art treats the hand as its own channel - Copy Pose (And Hand Pose),
+// a typical pose reference tool treats the hand as its own channel - Copy Pose (And Hand Pose),
 // Paste Pose Hand Only, Load Pose from File Hand Only - because the actual
 // workflow is: build a body pose once, then fix the hands. Bolting 40 finger
 // bones onto the body pose record would make every hand change a body-pose

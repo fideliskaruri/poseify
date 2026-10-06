@@ -1,6 +1,6 @@
 // Joint groups: user-defined subsets of the contract bones.
 //
-// PoseMy.Art lets an artist define a group so a chain can be posed as a unit.
+// a typical pose reference tool lets an artist define a group so a chain can be posed as a unit.
 // The real workflow is "rotate the whole arm" or "reset both hands", which is
 // otherwise N separate clicks or a pose re-pick.
 //

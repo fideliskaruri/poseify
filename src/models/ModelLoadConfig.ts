@@ -1,4 +1,4 @@
-// Per-model gizmo tuning, mirroring PoseMy's per-model load config.
+// Per-model gizmo tuning.
 // Bone handle size is what makes posing "feel" different on a chibi vs a brute,
 // so this is stored per model rather than as a global slider.
 
@@ -9,11 +9,11 @@ export interface ModelLoadConfig {
   /** Human-readable family, used for picker grouping. */
   family: string;
   tags: readonly string[];
-  /** Radius multiplier for body-bone gizmos. PoseMy uses 3.0-4.0. */
+  /** Radius multiplier for body-bone gizmos. Typical body handles: 3.0-4.0. */
   boneSize: number;
-  /** Radius multiplier for the 42 hand bones. PoseMy uses 0.8-1.0. */
+  /** Radius multiplier for the 42 hand bones. Typical hand handles: 0.8-1.0. */
   handBoneSize: number;
-  /** Radius multiplier for the hip/root bone. PoseMy uses 5.0-6.0. */
+  /** Radius multiplier for the hip/root bone. Typical hip handle: 5.0-6.0. */
   hipBoneSize: number;
   /** Whether OBJ export is permitted for this model. */
   exportable: boolean;
@@ -42,3 +42,4 @@ export function gizmoSizeFor(
   if (/Hand/.test(boneName)) return config.handBoneSize;
   return config.boneSize;
 }
+

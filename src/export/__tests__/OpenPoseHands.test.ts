@@ -16,7 +16,7 @@ import { ALL_BONES, FULL_PARENTS } from "../../rig/RigContract";
 /**
  * Phase 3: OpenPose with and without hands.
  *
- * PoseMy.Art exports both forms because different downstream tools consume
+ * a typical pose reference tool exports both forms because different downstream tools consume
  * different ones. The body-only form stays byte-identical to what shipped in
  * the v1 build, so the assertions below are about addition, never substitution.
  */

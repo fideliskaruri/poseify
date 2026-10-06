@@ -1,6 +1,6 @@
 // In-memory pose clipboard and a deterministic random-pose pick.
 //
-// PoseMy.Art separates Copy Pose / Paste Pose from scene save, because the
+// a typical pose reference tool separates Copy Pose / Paste Pose from scene save, because the
 // actual workflow is: build a body pose on one figure, then carry it to
 // another. A scene carries one whole setup; a pose carries one articulation.
 //

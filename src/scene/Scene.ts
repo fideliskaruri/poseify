@@ -13,7 +13,7 @@ export const SCENE_FORMAT_VERSION = 1;
 // Per-object transform, kept apart from the pose record. The pose is joint
 // rotations; this is where the whole figure sits in the world. Phase 1 moved
 // scale from a bare number to a full vec3 so a figure can be stretched, and
-// added the object-level flags PoseMy.Art exposes as Show/Lock/Color.
+// added the object-level flags a typical pose reference tool exposes as Show/Lock/Color.
 export interface ObjectTransform {
   position: [number, number, number];
   rotation: [number, number, number, number];
@@ -51,7 +51,7 @@ export interface SceneProp {
   /**
    * Joint this prop is pinned to, or undefined when it stands on its own.
    *
-   * Mirrors PoseMy.Art's `propAttachInfo`. Stored by bone name rather than by
+   * Mirrors a typical reference tool's `propAttachInfo`. Stored by bone name rather than by
    * a bone reference so the record is plain JSON: a saved scene has no live
    * skeleton to point at.
    */

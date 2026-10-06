@@ -20,7 +20,6 @@ import {
 import { POSE_LIBRARY, findPoseById } from "../src/pose/PoseLibrary";
 import { PROP_CATALOG } from "../src/props/PropCatalog";
 import { MODEL_CATALOG } from "../src/models/ModelCatalog";
-import { isVendorModel } from "../src/models/ModelCatalog";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Written to public/ rather than inlined: 220 scenes is roughly 600 KB of scene
@@ -172,5 +171,6 @@ function main(): void {
 }
 
 main();
+
 
 
