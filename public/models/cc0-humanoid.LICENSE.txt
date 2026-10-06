@@ -1,0 +1,6 @@
+CC0 1.0 Universal
+
+This file (`cc0-humanoid.glb`) is an original simple rigged humanoid generated
+for Poseify. It is dedicated to the public domain under CC0 1.0 Universal.
+
+https://creativecommons.org/publicdomain/zero/1.0/

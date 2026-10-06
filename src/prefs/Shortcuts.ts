@@ -47,7 +47,7 @@ const CHARTS: readonly Chord[] = [
   { action: "duplicateObject", key: "d", shift: true },
   { action: "toggleHidden", key: "h", shift: true },
   { action: "toggleLock", key: "l" },
-  // Switch Pose Sides is f/x on PoseMy.Art. F is already the favourites
+  // Switch Pose Sides is f/x on a typical pose reference tool. F is already the favourites
   // filter here, so the flip binds to X and F stays put.
   { action: "switchPoseSides", key: "x" },
   { action: "resetJoint", key: "r", alt: true },

@@ -1,6 +1,6 @@
 // Per-object edit state: transform gizmo, duplicate, hide, lock, colour.
 //
-// Phase 1 of the parity work. PoseMy.Art's model toolbar exposes
+// Phase 1 of the parity work. a typical reference tool's model toolbar exposes
 // Move/Rotate/Scale/Duplicate/Colour/Show/Lock on the selected *object*, while
 // Poseify's existing gizmo only rotates a single *bone*. This module owns the
 // object half: which object is selected, what mode its gizmo is in, and the

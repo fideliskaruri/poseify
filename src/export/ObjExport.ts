@@ -223,7 +223,7 @@ export interface SceneObjSource {
 /**
  * Export every mesh in a scene as one OBJ, models and props together.
  *
- * PoseMy.Art exports the whole composition so a prop-built scene can leave the
+ * a typical pose reference tool exports the whole composition so a prop-built scene can leave the
  * app. exportObj already bakes world transforms per object, which is exactly
  * the per-object work; this concatenates several hierarchies, shifting each
  * object's face indices past everything written before it, because OBJ indices

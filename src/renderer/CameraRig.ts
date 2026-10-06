@@ -1,6 +1,6 @@
 // Camera control: lock, reset, named presets and viewport capture.
 //
-// PoseMy.Art has a Take Screenshot / Reset / Lock / Unlock / FOV camera panel.
+// a typical pose reference tool has a Take Screenshot / Reset / Lock / Unlock / FOV camera panel.
 // Poseify persists a camera only inside a saved scene, so an artist cannot park
 // a framing and come back to it while posing something else.
 //

@@ -1,40 +1,41 @@
 // The shipped model catalogue.
 //
-// Every entry is a real FBX scraped from the PoseMy.Art CDN by
-// tools/fetch-models.ts and served out of /public/vendor/pose-my-art/. See
-// ATTRIBUTION.md for provenance: these are vendor assets, not CC0.
-//
-// There are no procedurally generated models. Anything that needed a builder
-// at runtime was removed; if a model is in the picker, it is a file on disk.
+// Poseify ships only assets it has rights to distribute. The default figure is
+// a rigged humanoid under public/models/ (see ATTRIBUTION.md).
 
 import { DEFAULT_LOAD_CONFIG, type ModelLoadConfig } from "./ModelLoadConfig";
-import { VENDOR_CATALOG, type VendorEntry } from "./VendorCatalog";
 import { loadModelFromURL } from "./ModelLoader";
 import * as THREE from "three";
 
-/**
- * A catalogue entry is a load config plus the vendor file it resolves to. The
- * `file` field is what distinguishes a real asset from a config that only
- * carries tuning.
- */
+/** A catalogue entry is a load config plus optional on-disk file name. */
 export interface CatalogEntry extends ModelLoadConfig {
   file?: string;
 }
 
 /**
- * Every model Poseify ships. Ordered so the picker reads sensibly: realistic
- * humans first, then stylized, then bots, then creatures.
+ * Every model Poseify ships. One bundled humanoid so a fresh clone can pose
+ * without fetching third-party CDN content.
  */
 export const MODEL_CATALOG: readonly CatalogEntry[] = [
-  ...VENDOR_CATALOG.map((v) => v as CatalogEntry),
+  {
+    ...DEFAULT_LOAD_CONFIG,
+    id: "cc0-humanoid",
+    name: "CC0 Humanoid",
+    family: "human",
+    tags: ["cc0", "humanoid", "default"],
+    path: "/models/cc0-humanoid.glb",
+    file: "cc0-humanoid.glb",
+    exportable: true,
+  },
 ];
 
 export function findModel(id: string): CatalogEntry | undefined {
   return MODEL_CATALOG.find((m) => m.id === id);
 }
 
-export function isVendorModel(config: ModelLoadConfig): boolean {
-  return typeof (config as VendorEntry).file === "string";
+/** True when the entry points at a loadable file path. */
+export function isBundledModel(config: ModelLoadConfig): boolean {
+  return typeof config.path === "string" && config.path.length > 0;
 }
 
 export interface InstantiatedModel {
@@ -44,18 +45,16 @@ export interface InstantiatedModel {
 
 /**
  * Load a model from the catalogue.
- *
- * FBX files come in at roughly human height in centimetres (these measure
- * ~1.7-1.8 in scene units but are authored at 100x scale), so anything loaded
- * from disk is normalised to metres here. That keeps posing, IK and export
- * working in consistent units regardless of how the mesh was authored.
+ * Disk assets are normalised to metres so posing, IK and export share units.
  */
 export async function loadModel(
   config: CatalogEntry,
   options: { renderer?: THREE.WebGLRenderer } = {},
 ): Promise<InstantiatedModel> {
   if (!config.path) {
-    throw new Error(`Model "${config.id}" has no vendor file to load.`);
+    throw new Error(
+      `Model "${config.id}" has no file to load. Add a path under public/models/.`,
+    );
   }
 
   const { root } = await loadModelFromURL(config.path, options);
@@ -64,8 +63,6 @@ export async function loadModel(
   const bones = new Map<string, THREE.Bone>();
   root.traverse((o) => {
     if (o instanceof THREE.Bone) bones.set(o.name, o);
-    // Loaded assets do not carry shadow flags, and without them the figure
-    // casts nothing onto the ground plane.
     if (o instanceof THREE.Mesh) {
       o.castShadow = true;
       o.receiveShadow = true;
@@ -76,22 +73,7 @@ export async function loadModel(
 
 /**
  * Rescale a loaded model so a human stands roughly 1.75 m tall.
- *
- * DCC exports routinely bake in a scale factor; these FBX files measure about
- * 176 units for a 1.76 m figure. Posing, IK and export all assume metres, so
- * the hierarchy is scaled once here instead of compensating downstream.
- *
- * Animals and other non-humanoids are the awkward case: a horse or a werewolf
- * is genuinely not ~1.75 m, so forcing that target would visibly distort them
- * relative to a human standing next to them. The guard below only rescales
- * when the model is clearly authored in the wrong unit (out of the sane metre
- * range), so a correctly-scaled horse keeps its real size.
- *
- * Skinning note: a SkinnedMesh in the default "attached" bind mode recomputes
- * its bind matrix from the mesh's world matrix every frame, so scaling the
- * root after FBXLoader has bound the skeleton makes the deformation collapse.
- * Switching to "detached" with an explicit bind matrix keeps the bind pose
- * fixed while the root carries the scale.
+ * Only rescales when clearly authored in the wrong unit.
  */
 export function normaliseToMetres(
   root: THREE.Object3D,
@@ -103,20 +85,10 @@ export function normaliseToMetres(
 
   const height = box.max.y - box.min.y;
   if (height < 1e-6) return 1;
-  // Already in a plausible metre range for *something* on this planet: leave
-  // an artist's own scale choice alone rather than flattening a tall horse to
-  // human height or inflating a mouse.
   if (height >= 0.2 && height <= 20) return 1;
 
   const scale = targetHeight / height;
 
-  // Scale the whole hierarchy in place rather than setting root.scale.
-  //
-  // An FBX armature keeps its bones in a separate subtree from the mesh, and
-  // the skin matrices are built from the bones. Setting scale on the wrapper
-  // root moves the mesh but leaves the bone matrices unscaled, so skinning
-  // collapses to a point. Scaling every top-level node by the same factor
-  // keeps mesh and skeleton consistent.
   root.updateMatrixWorld(true);
   for (const child of [...root.children]) {
     child.scale.multiplyScalar(scale);
@@ -124,7 +96,6 @@ export function normaliseToMetres(
 
   root.updateMatrixWorld(true);
 
-  // Recompute bind state so the deformation matches the new scale.
   root.traverse((o) => {
     if (o instanceof THREE.SkinnedMesh && o.skeleton) {
       o.bindMode = THREE.AttachedBindMode;
@@ -134,4 +105,3 @@ export function normaliseToMetres(
 
   return scale;
 }
-

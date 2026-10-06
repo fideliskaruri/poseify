@@ -13,11 +13,11 @@ and no telemetry.
   and inverse kinematics for dragging hands and feet.
 - **Rig contract and retargeter**: any humanoid skeleton is mapped onto one
   shared contract, so poses and clips carry across figures.
-- **Pose library**: 1,298 poses authored in this repository (98 hand-made, 1,200
-  generated and validated), with search, tag filters and thumbnails.
+- **Pose library**: poses authored in this repository (hand-made and generated),
+  with search, tag filters and thumbnails.
 - **Pose tools**: mirror arms or legs, reset one joint, switch sides, copy and
   paste poses between figures, joint groups and anchors.
-- **Hand posing**: nine hand poses per side, applied separately from the body.
+- **Hand posing**: hand poses per side, applied separately from the body.
 - **Motion capture**: clips converted from the CMU Graphics Lab Motion Capture
   Database, with play, pause, scrub and frame stepping.
 - **Props and image planes**: a procedural prop set built in code, plus OBJ and
@@ -36,17 +36,15 @@ and no telemetry.
 Requires Node.js 20 or newer.
 
 ```bash
-npm ci --ignore-scripts
+npm ci
 npm run clips:build   # optional: downloads and converts the CMU mocap clips
 npm run dev
 ```
 
 Open the URL Vite prints, usually <http://localhost:5173>.
 
-Use `--ignore-scripts`. The repository still carries an install hook and
-loaders for third-party model, pose, prop and scene files that are not part of
-this project and not covered by its licence. They are scheduled for removal
-(see [Known gaps](#known-gaps)).
+There is no install hook that downloads third-party model packs. The default
+figure is the bundled CC0 humanoid under `public/models/`.
 
 | Command | Purpose |
 |---|---|
@@ -85,19 +83,16 @@ src/
   scene/       Camera, light, grid, scenes, history
   export/      Render passes, OpenPose keypoints, OBJ export
   renderer/    WebGL viewport
+public/
+  models/      Bundled CC0 figure
 tools/         Clip building, pose generation, demo page
 ```
 
 ## Known gaps
 
-- **No bundled figure yet.** A CC0 rigged humanoid is planned so a fresh clone
-  has a figure to pose.
-- **Third-party leftovers.** The install hook, the `Vendor*` loaders and
-  catalogues, and `research/raw/` predate this fork's licence clean-up. They are
-  not part of Poseify and will be removed in a follow-up change.
-- Known engine bugs and the work backlog are tracked in `STATUS.md`.
+- Engine bugs and the work backlog are tracked in `STATUS.md`.
 
 ## Licence
 
 MIT for the source code and the content authored in this repository. See
-`ATTRIBUTION.md` for third-party software and data.
+`ATTRIBUTION.md` for third-party software, data, and the bundled CC0 figure.

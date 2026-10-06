@@ -3,7 +3,7 @@
 // and every mocap clip. Deviating breaks pose portability, which is the
 // biggest failure mode in this product.
 
-// 20 body bones. Order is canonical and matches the PoseMy bundle.
+// 20 body bones. Order is canonical and matches the canonical humanoid bundle.
 export const BODY_BONES = [
   "RightUpLeg",
   "LeftUpLeg",
@@ -159,7 +159,7 @@ export function validateSkeleton(
   return { ok: missing.length === 0, missing, extra };
 }
 
-// IK chains, effector first (PoseMy/bundle order). The solver reverses these
+// IK chains, effector first (canonical/bundle order). The solver reverses these
 // into parent->child order. Single source of truth for the IK topology.
 export const IK_CHAINS: Readonly<Record<string, readonly string[]>> = {
   LeftHand: ["LeftHand", "LeftForeArm", "LeftArm", "LeftShoulder"],

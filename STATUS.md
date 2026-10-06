@@ -1,6 +1,6 @@
 # Poseify: status
 
-Last updated: 2026-10-02
+Last updated: 2026-10-06
 
 Poseify is a free, MIT-licensed, browser-based 3D pose reference tool built
 with Vue 3, Vite, TypeScript and three.js. This file records what exists, what
@@ -13,7 +13,7 @@ git history.
 |---|---|
 | Rig contract and three-tier retargeter | Built and covered by the test suite |
 | Forward and inverse kinematics posing | Built |
-| Pose library (1,298 own poses) and hand poses (9 per side) | Built |
+| Pose library (own poses) and hand poses | Built |
 | Pose tools: mirror, reset, copy/paste, joint groups, anchors | Built |
 | CMU mocap import and clip playback | Built; clips are built locally with `npm run clips:build` |
 | Procedural props, OBJ/glTF prop import, image planes | Built |
@@ -21,7 +21,7 @@ git history.
 | Exports: Regular, OpenPose, Depth, Canny, Normals, OBJ | Built; see known bugs |
 | Camera presets, scenes, save/load, undo/redo | Built |
 | Shortcuts, settings, onboarding tour | Built |
-| Bundled figure | **Missing.** A CC0 rigged humanoid is planned |
+| Bundled figure | One original CC0 humanoid under `public/models/` |
 
 ## Known bugs
 
@@ -59,10 +59,9 @@ Treat earlier "verified" claims in git history as unconfirmed until they are
 checked again with a headless browser and recorded with screenshots and
 numbers.
 
-## Licence clean-up
+## Licence
 
-The documentation no longer describes Poseify as a copy of, or a host for,
-another product's content. Some leftover files and code still need removing:
-the install hook, the `Vendor*` loaders and catalogues, `research/raw/` and
-`research/model-catalog.csv`. See `ATTRIBUTION.md`. Install with
-`npm ci --ignore-scripts` until then.
+MIT for engine source and authored content. Bundled figure is CC0 (see
+`ATTRIBUTION.md`). Poseify does not ship PoseMy.Art models, poses, scenes, or
+props. Third-party CDN scrape tools and Vendor* catalogues have been removed
+from this tree.

@@ -2,14 +2,22 @@
 
 ## Poseify
 
-The Poseify source code is MIT licensed. So is the content authored in this
-repository:
+The Poseify source code is MIT licensed. Content authored in this repository is
+also MIT unless a file says otherwise:
 
 - the pose library in `src/pose/` (hand-made and generated poses)
 - the hand-pose library in `src/pose/HandPoseLibrary.ts`
 - the procedural prop set in `src/props/PropCatalog.ts`, built from three.js
   primitives in code
 - the hand-authored premade scenes in `src/scene/PremadeScenes.ts`
+
+Poseify does not ship PoseMy.Art models, poses, scenes, or props.
+
+## Bundled figure
+
+| Asset | Licence | Notes |
+|---|---|---|
+| `public/models/cc0-humanoid.glb` | CC0 1.0 (original to this project) | Default rigged humanoid for the model picker. See `public/models/cc0-humanoid.LICENSE.txt`. |
 
 ## Third-party software
 
@@ -37,17 +45,3 @@ redistributed: `npm run clips:build` downloads and converts them locally into
 The skeleton contract in `src/rig/RigContract.ts` uses the Mixamo/Maya humanoid
 bone naming convention (`Hips`, `Spine`, `LeftForeArm`, `LeftHandIndex1`, ...).
 That is a naming convention, not an asset.
-
-## Files that are not part of Poseify
-
-Some files left over from before this fork's licence clean-up are not covered by
-the MIT licence and are not licensed for redistribution by this project:
-
-- `research/raw/`
-- `research/model-catalog.csv`
-- `src/props/VendorPropCatalog.ts`
-- anything an install hook or the `Vendor*` loaders download into
-  `public/vendor/` (other than the mocap clips above)
-
-They are scheduled for removal. Install with `npm ci --ignore-scripts` to skip
-the download.

@@ -1,6 +1,6 @@
 // Attaching a prop to a joint.
 //
-// PoseMy.Art calls this attach/detach to joint: select a prop, press Attach,
+// a typical pose reference tool calls this attach/detach to joint: select a prop, press Attach,
 // click a joint, and the prop becomes a child of that bone so it follows the
 // figure through every pose change. This file holds the transform maths; the
 // mode, the highlight and the button live in the composable and the view.

@@ -10,13 +10,8 @@ tools/cache/
 # CMU mocap source files (hundreds of MB, refetched by `npm run clips:build`).
 tools/cache/cmu/
 
-# Downloaded third-party files. Not part of Poseify and must never be committed
-# (see ATTRIBUTION.md). The CMU mocap clips built by `npm run clips:build` also
-# land here.
-public/vendor/
+# CMU mocap clips built by `npm run clips:build` (not committed).
+public/vendor/mocap/
 
 # Local dev-server log, written by `npm run dev`.
 dev.log
-
-# Extracted third-party catalogues. Must never be committed.
-research/extracted/

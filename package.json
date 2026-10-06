@@ -11,15 +11,11 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "postinstall": "vite-node tools/setup-assets.ts",
-    "setup": "vite-node tools/setup-assets.ts",
-    "models:fetch": "vite-node tools/fetch-models.ts",
-    "models:verify": "vite-node tools/verify-models.ts",
-    "clips:build": "vite-node tools/build-clips.ts",
-    "poses:generate": "vite-node tools/build-pose-library.ts",
-    "scenes:generate": "vite-node tools/build-scene-library.ts",
-    "demo:build": "vite-node tools/build-demo.ts"
+        "test:watch": "vitest",
+        "clips:build": "vite-node tools/build-clips.ts",
+        "poses:generate": "vite-node tools/build-pose-library.ts",
+        "scenes:generate": "vite-node tools/build-scene-library.ts",
+        "demo:build": "vite-node tools/build-demo.ts"
   },
   "dependencies": {
     "three": "^0.169.0"

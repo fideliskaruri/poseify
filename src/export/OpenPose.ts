@@ -39,7 +39,7 @@ export type Coco18Name = (typeof COCO18)[number];
 /**
  * Hand keypoints appended after the 18 body joints.
  *
- * PoseMy.Art exports OpenPose twice, with and without hands, because different
+ * a typical pose reference tool exports OpenPose twice, with and without hands, because different
  * downstream consumers need different things: ControlNet's openpose
  * conditioning historically ignores fingers, while hand-pose pipelines and
  * some SDXL variants do consume them. Rather than a second image format, the
